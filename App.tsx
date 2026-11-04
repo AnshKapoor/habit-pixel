@@ -3,10 +3,11 @@ import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StartupSplash } from './src/components/StartupSplash';
 import { AccountScreen } from './src/screens/AccountScreen';
 import { HabitsScreen } from './src/screens/HabitsScreen';
 import { SummaryScreen } from './src/screens/SummaryScreen';
-import { StoreProvider } from './src/store';
+import { StoreProvider, useStore } from './src/store';
 import { useTheme, type Theme } from './src/theme';
 
 type Tab = 'habits' | 'summary' | 'account';
@@ -30,6 +31,7 @@ export default function App() {
 function Root() {
   const theme = useTheme();
   const [tab, setTab] = useState<Tab>('habits');
+  const { loaded } = useStore();
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.bg }]} edges={['top', 'left', 'right']}>
@@ -40,6 +42,7 @@ function Root() {
         {tab === 'account' && <AccountScreen theme={theme} />}
       </View>
       <TabBar theme={theme} tab={tab} onChange={setTab} />
+      <StartupSplash ready={loaded} />
     </SafeAreaView>
   );
 }

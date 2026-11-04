@@ -1,0 +1,238 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { formatPeriod, periodNoun } from '../dates';
+import { hasTarget, periodEntries, valueStrength } from '../stats';
+import { tileColor, type Theme } from '../theme';
+import type { Habit } from '../types';
+import { Sheet } from './Sheet';
+
+const MAX_CHIPS = 20;
+
+interface Props {
+  habit: Habit | null;
+  periodKey: string | null;
+  theme: Theme;
+  onAdd: (value: number) => void;
+  onRemove: (index: number) => void;
+  onClear: () => void;
+  onClose: () => void;
+}
+
+/** Every entry logged for one day / week / month, with buttons to add or remove single entries. */
+export function EntriesSheet({ habit, periodKey, theme, onAdd, onRemove, onClear, onClose }: Props) {
+  const [text, setText] = useState('');
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [shownFor, setShownFor] = useState<string | null>(null);
+  if (shownFor !== periodKey) {
+    setShownFor(periodKey);
+    setText('');
+    setConfirmClear(false);
+  }
+
+  if (!habit || !periodKey) return null;
+  const entries = periodEntries(habit, periodKey);
+  const count = entries.length;
+  const withTarget = hasTarget(habit);
+  const target = Math.max(1, habit.target);
+  const reached = count >= target;
+  const noun = periodNoun(habit.frequency);
+  const unit = habit.unit ? ` ${habit.unit}` : '';
+  const isValue = habit.kind === 'value';
+
+  const submitText = () => {
+    const n = Number(text.replace(',', '.'));
+    if (!text.trim() || !Number.isFinite(n) || n <= 0) return;
+    onAdd(Math.min(habit.maxValue, n));
+    setText('');
+  };
+
+  const clear = () => {
+    if (count > 1 && !confirmClear) return setConfirmClear(true);
+    setConfirmClear(false);
+    onClear();
+  };
+
+  return (
+    <Sheet visible onClose={onClose} theme={theme}>
+      <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} keyboardShouldPersistTaps="handled">
+        <Text style={[styles.title, { color: theme.text }]}>
+          {habit.emoji ? `${habit.emoji} ` : ''}
+          {habit.name}
+        </Text>
+        <Text style={{ color: theme.subtext }}>{formatPeriod(periodKey, habit.frequency)}</Text>
+
+        {/* Progress towards the target */}
+        {withTarget ? (
+          <View style={styles.progressRow}>
+            <Text style={[styles.count, { color: theme.text }]}>
+              {count}
+              <Text style={[styles.countOf, { color: theme.subtext }]}> / {target}</Text>
+            </Text>
+            <View style={{ flex: 1 }}>
+              <View style={[styles.track, { backgroundColor: theme.empty }]}>
+                <View
+                  style={[
+                    styles.fill,
+                    { backgroundColor: habit.color, width: `${Math.min(100, Math.round((count / target) * 100))}%` },
+                  ]}
+                />
+              </View>
+              <Text
+                style={{ color: reached ? habit.color : theme.subtext, fontSize: 12, fontWeight: '600', marginTop: 4 }}
+              >
+                {reached
+                  ? `Target reached${count > target ? ` (+${count - target})` : ''}`
+                  : `${target - count} more to reach this ${noun}’s target`}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {/* Logged entries */}
+        <Text style={[styles.label, { color: theme.subtext }]}>
+          {count === 0 ? 'No entries yet' : `${count} ${count === 1 ? 'entry' : 'entries'}`}
+        </Text>
+        {entries.map((v, i) => (
+          <View key={i} style={[styles.entry, { borderColor: theme.border }]}>
+            <View style={[styles.entryNum, { backgroundColor: habit.color }]}>
+              <Text style={styles.entryNumText}>{i + 1}</Text>
+            </View>
+            <Text style={{ color: theme.text, flex: 1, fontSize: 15 }}>
+              {isValue ? (
+                <>
+                  <Text style={{ fontWeight: '700' }}>{formatValue(v)}</Text>
+                  <Text style={{ color: theme.subtext }}>
+                    {' '}
+                    / {habit.maxValue}
+                    {unit}
+                  </Text>
+                </>
+              ) : (
+                `Entry ${i + 1}`
+              )}
+            </Text>
+            <Pressable
+              onPress={() => onRemove(i)}
+              hitSlop={8}
+              accessibilityLabel={`Remove entry ${i + 1}`}
+              style={styles.remove}
+            >
+              <Ionicons name="close" size={18} color={theme.danger} />
+            </Pressable>
+          </View>
+        ))}
+
+        {/* Add an entry */}
+        <Text style={[styles.label, { color: theme.subtext }]}>{isValue ? 'Add an entry with value' : 'Add'}</Text>
+        {!isValue ? (
+          <Pressable
+            onPress={() => onAdd(1)}
+            style={({ pressed }) => [styles.addBtn, { backgroundColor: habit.color, opacity: pressed ? 0.85 : 1 }]}
+          >
+            <Ionicons name="add" size={20} color="#fff" />
+            <Text style={styles.addText}>Add entry {count + 1}</Text>
+          </Pressable>
+        ) : habit.maxValue <= MAX_CHIPS ? (
+          <View style={styles.chips}>
+            {Array.from({ length: habit.maxValue }, (_, i) => i + 1).map((v) => {
+              const strength = valueStrength(habit, v);
+              return (
+                <Pressable
+                  key={v}
+                  onPress={() => onAdd(v)}
+                  accessibilityLabel={`Add entry with value ${v}`}
+                  style={({ pressed }) => [
+                    styles.chip,
+                    { backgroundColor: tileColor(habit.color, strength, theme.empty), opacity: pressed ? 0.7 : 1 },
+                  ]}
+                >
+                  <Text style={{ color: strength > 0.55 ? '#fff' : theme.text, fontWeight: '600' }}>{v}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : (
+          <View style={[styles.chips, { alignItems: 'center' }]}>
+            <TextInput
+              value={text}
+              onChangeText={setText}
+              keyboardType="decimal-pad"
+              placeholder={`1 – ${habit.maxValue}${unit}`}
+              placeholderTextColor={theme.subtext}
+              onSubmitEditing={submitText}
+              style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+            />
+            <Pressable onPress={submitText} style={[styles.button, { backgroundColor: habit.color }]}>
+              <Text style={{ color: '#fff', fontWeight: '600' }}>Add</Text>
+            </Pressable>
+          </View>
+        )}
+
+        <View style={styles.footer}>
+          <Pressable
+            onPress={clear}
+            disabled={count === 0}
+            style={[styles.zeroBtn, { borderColor: theme.border, opacity: count ? 1 : 0.4 }]}
+          >
+            <Text style={{ color: theme.danger, fontWeight: '600' }}>
+              {confirmClear ? `Tap again to remove all ${count}` : 'Set to 0 · not done'}
+            </Text>
+          </Pressable>
+          <Pressable onPress={onClose} hitSlop={8}>
+            <Text style={{ color: theme.subtext, fontWeight: '600' }}>Done</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </Sheet>
+  );
+}
+
+function formatValue(v: number): string {
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
+const styles = StyleSheet.create({
+  title: { fontSize: 18, fontWeight: '700', marginBottom: 2 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 14 },
+  count: { fontSize: 30, fontWeight: '800' },
+  countOf: { fontSize: 18, fontWeight: '600' },
+  track: { height: 10, borderRadius: 5, overflow: 'hidden' },
+  fill: { height: 10, borderRadius: 5 },
+  label: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 18,
+    marginBottom: 8,
+  },
+  entry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 6,
+  },
+  entryNum: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  entryNumText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  remove: { padding: 4 },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  addText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  input: { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16 },
+  button: { paddingHorizontal: 18, paddingVertical: 12, borderRadius: 10 },
+  zeroBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 },
+});

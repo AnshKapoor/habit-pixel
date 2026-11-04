@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { periodKey, periodNoun } from '../dates';
-import { bestStreak, currentStreak, intensity, totalCompleted } from '../stats';
+import { bestStreak, currentStreak, periodEntries, periodStrength, totalEntries } from '../stats';
 import { tileColor, type Theme } from '../theme';
 import type { Habit } from '../types';
 import { Heatmap } from './Heatmap';
@@ -11,7 +11,7 @@ interface Props {
   habit: Habit;
   theme: Theme;
   onEdit: () => void;
-  /** Tap on a tile or the check button for the period starting at `key`. */
+  /** Tap on a tile or the round button: open the entries for the period starting at `key`. */
   onLog: (key: string) => void;
 }
 
@@ -19,8 +19,18 @@ const FREQ_LABEL = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly' } as c
 
 export function HabitCard({ habit, theme, onEdit, onLog }: Props) {
   const nowKey = periodKey(new Date(), habit.frequency);
-  const nowValue = habit.entries[nowKey];
-  const strength = intensity(habit, nowValue);
+  const nowEntries = periodEntries(habit, nowKey);
+  const count = nowEntries.length;
+  const strength = periodStrength(habit, nowKey);
+  // Round button label: progress when there's a target, otherwise the value (or how many entries).
+  const badge =
+    habit.target > 1
+      ? `${count}/${habit.target}`
+      : count > 1
+        ? `×${count}`
+        : count === 1 && habit.kind === 'value'
+          ? String(nowEntries[0])
+          : null;
   const streak = currentStreak(habit);
   const best = bestStreak(habit);
   const noun = periodNoun(habit.frequency);
@@ -35,12 +45,13 @@ export function HabitCard({ habit, theme, onEdit, onLog }: Props) {
           </Text>
           <Text style={[styles.meta, { color: theme.subtext }]}>
             {FREQ_LABEL[habit.frequency]}
+            {habit.target >= 1 ? ` · goal ${habit.target}×/${noun}` : ''}
             {habit.kind === 'value' ? ` · 0–${habit.maxValue}${habit.unit ? ` ${habit.unit}` : ''}` : ''}
             {'  ·  '}🔥 {streak} {noun}
             {streak === 1 ? '' : 's'}
             {'  ·  '}best {best}
             {'  ·  '}
-            {totalCompleted(habit)} total
+            {totalEntries(habit)} total
           </Text>
         </Pressable>
 
@@ -50,7 +61,7 @@ export function HabitCard({ habit, theme, onEdit, onLog }: Props) {
 
         <Pressable
           onPress={() => onLog(nowKey)}
-          accessibilityLabel={`Log ${habit.name} for this ${noun}`}
+          accessibilityLabel={`Entries for ${habit.name} this ${noun}: ${count}${habit.target >= 1 ? ` of ${habit.target}` : ''}`}
           style={[
             styles.check,
             {
@@ -59,11 +70,15 @@ export function HabitCard({ habit, theme, onEdit, onLog }: Props) {
             },
           ]}
         >
-          {habit.kind === 'value' && nowValue ? (
-            <Text style={[styles.checkText, { color: strength > 0.55 ? '#fff' : theme.text }]}>{nowValue}</Text>
+          {badge ? (
+            <Text
+              style={[styles.checkText, badge.length > 3 && { fontSize: 12 }, { color: strength > 0.55 ? '#fff' : theme.text }]}
+            >
+              {badge}
+            </Text>
           ) : (
             <Ionicons
-              name={habit.kind === 'value' ? 'add' : habit.shape === 'star' ? 'star' : 'checkmark'}
+              name={habit.kind === 'value' || count === 0 ? 'add' : habit.shape === 'star' ? 'star' : 'checkmark'}
               size={22}
               color={strength > 0 ? '#fff' : theme.subtext}
             />
@@ -73,7 +88,7 @@ export function HabitCard({ habit, theme, onEdit, onLog }: Props) {
 
       <Heatmap habit={habit} theme={theme} onTilePress={onLog} />
 
-      {habit.kind === 'value' && (
+      {(habit.kind === 'value' || habit.target > 1) && (
         <View style={styles.legend}>
           <Text style={[styles.legendText, { color: theme.subtext }]}>Less</Text>
           {[0, 0.25, 0.5, 0.75, 1].map((s) => (

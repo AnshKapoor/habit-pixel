@@ -1,10 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { Session } from '@supabase/supabase-js';
+import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ConnectSheet, FaqSheet, HelpLink } from '../components/CloudSetup';
 import { Segmented } from '../components/Segmented';
 import { exportHabitsFile, mergeHabits, parseBackup, pickBackupFile, type ParsedBackup } from '../backup';
-import { cloudConfigured, downloadHabits, supabase, uploadHabits, useSession } from '../cloud';
+import { downloadHabits, uploadHabits, useCloud, useSession, type CloudConfig } from '../cloud';
 import { useStore } from '../store';
 import type { Theme } from '../theme';
 import type { Habit } from '../types';
@@ -14,7 +15,7 @@ function errorText(e: unknown): string {
   const msg =
     e instanceof Error ? e.message : typeof e === 'object' && e && 'message' in e ? String(e.message) : String(e);
   if (/failed to fetch|network request failed/i.test(msg)) {
-    return 'Couldn’t reach the cloud server. Check your internet connection and the Supabase URL in .env.';
+    return 'Couldn’t reach the cloud server. Check your internet connection and the project URL under Cloud connection.';
   }
   return msg;
 }
@@ -25,7 +26,10 @@ function formatTime(iso: string): string {
 }
 
 export function AccountScreen({ theme }: { theme: Theme }) {
-  const { session, ready } = useSession();
+  const { client, config, loaded } = useCloud();
+  const { session, ready } = useSession(client);
+  const [sheet, setSheet] = useState<'connect' | 'faq' | null>(null);
+  const openFaq = () => setSheet('faq');
 
   return (
     <ScrollView contentContainerStyle={screenStyles.content} keyboardShouldPersistTaps="handled">
@@ -34,17 +38,31 @@ export function AccountScreen({ theme }: { theme: Theme }) {
         <Text style={{ color: theme.subtext }}>Back up your habits to the cloud and use them on other devices</Text>
       </View>
 
-      {!cloudConfigured ? (
-        <NotConfigured theme={theme} />
-      ) : !ready ? (
+      {!loaded || (client && !ready) ? (
         <ActivityIndicator color={theme.accent} style={{ marginVertical: 30 }} />
-      ) : session ? (
-        <CloudBackup theme={theme} session={session} />
+      ) : !client || !config ? (
+        <NotConnected theme={theme} onConnect={() => setSheet('connect')} onHelp={openFaq} />
       ) : (
-        <LoginForm theme={theme} />
+        <>
+          <Connection theme={theme} config={config} onChange={() => setSheet('connect')} onHelp={openFaq} />
+          {session ? (
+            <CloudBackup theme={theme} client={client} session={session} />
+          ) : (
+            <LoginForm theme={theme} client={client} />
+          )}
+        </>
       )}
 
       <BackupFile theme={theme} />
+
+      <ConnectSheet
+        visible={sheet === 'connect'}
+        theme={theme}
+        current={config}
+        onClose={() => setSheet(null)}
+        onHelp={openFaq}
+      />
+      <FaqSheet visible={sheet === 'faq'} theme={theme} onClose={() => setSheet(null)} />
     </ScrollView>
   );
 }
@@ -141,21 +159,55 @@ ${pending.skipped} unreadable habit(s) will be skipped.` : ''}
   );
 }
 
-function NotConfigured({ theme }: { theme: Theme }) {
+function NotConnected({ theme, onConnect, onHelp }: { theme: Theme; onConnect: () => void; onHelp: () => void }) {
   return (
     <View style={[screenStyles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
       <Text style={[screenStyles.sectionTitle, { color: theme.subtext }]}>Cloud backup</Text>
-      <Text style={{ color: theme.text, lineHeight: 20 }}>
-        Cloud sign-in isn’t set up yet. Create a free Supabase project, run{' '}
-        <Text style={styles.code}>supabase/schema.sql</Text> in its SQL editor, then copy{' '}
-        <Text style={styles.code}>.env.example</Text> to <Text style={styles.code}>.env</Text> with your project URL and
-        key and restart the app. The README has the steps.
+      <Text style={{ color: theme.text, lineHeight: 20, marginBottom: 14 }}>
+        Connect your own free Supabase project to back up your habits and restore them on other devices.
       </Text>
+      <View style={[styles.buttons, { alignItems: 'center' }]}>
+        <View style={{ flexGrow: 1, minWidth: 170 }}>
+          <Button theme={theme} icon="cloud-outline" label="Connect cloud" onPress={onConnect} />
+        </View>
+        <HelpLink theme={theme} onPress={onHelp} />
+      </View>
     </View>
   );
 }
 
-function LoginForm({ theme }: { theme: Theme }) {
+function Connection({
+  theme,
+  config,
+  onChange,
+  onHelp,
+}: {
+  theme: Theme;
+  config: CloudConfig;
+  onChange: () => void;
+  onHelp: () => void;
+}) {
+  let host = config.url;
+  try {
+    host = new URL(config.url).host;
+  } catch {}
+  return (
+    <View style={[styles.connRow, { borderColor: theme.border }]}>
+      <Ionicons name="cloud-done-outline" size={18} color={theme.accent} />
+      <Text style={{ color: theme.subtext, flex: 1, fontSize: 13 }} numberOfLines={1}>
+        Connected to <Text style={{ color: theme.text, fontWeight: '600' }}>{host}</Text>
+      </Text>
+      <Pressable onPress={onChange} hitSlop={8}>
+        <Text style={{ color: theme.accent, fontWeight: '600', fontSize: 13 }}>Change</Text>
+      </Pressable>
+      <Pressable onPress={onHelp} hitSlop={8} accessibilityLabel="Cloud backup FAQ">
+        <Ionicons name="help-circle-outline" size={20} color={theme.accent} />
+      </Pressable>
+    </View>
+  );
+}
+
+function LoginForm({ theme, client }: { theme: Theme; client: SupabaseClient }) {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -165,15 +217,15 @@ function LoginForm({ theme }: { theme: Theme }) {
   const canSubmit = email.includes('@') && password.length >= 6 && !busy;
 
   const submit = async () => {
-    if (!supabase || !canSubmit) return;
+    if (!canSubmit) return;
     setBusy(true);
     setMessage(null);
     try {
       if (mode === 'signin') {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        const { error } = await client.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw error;
       } else {
-        const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
+        const { data, error } = await client.auth.signUp({ email: email.trim(), password });
         if (error) throw error;
         if (!data.session) {
           setMessage({ text: 'Account created. Check your inbox to confirm your email, then sign in.', error: false });
@@ -249,7 +301,7 @@ function LoginForm({ theme }: { theme: Theme }) {
   );
 }
 
-function CloudBackup({ theme, session }: { theme: Theme; session: Session }) {
+function CloudBackup({ theme, client, session }: { theme: Theme; client: SupabaseClient; session: Session }) {
   const { habits, replaceHabits } = useStore();
   const userId = session.user.id;
   const [cloud, setCloud] = useState<{ habits: Habit[]; updatedAt: string } | null | undefined>(undefined);
@@ -258,13 +310,13 @@ function CloudBackup({ theme, session }: { theme: Theme; session: Session }) {
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
 
   const refresh = useCallback(() => {
-    downloadHabits(userId)
+    downloadHabits(client, userId)
       .then(setCloud)
       .catch((e) => {
         setCloud(null);
         setMessage({ text: errorText(e), error: true });
       });
-  }, [userId]);
+  }, [client, userId]);
 
   useEffect(refresh, [refresh]);
 
@@ -275,7 +327,7 @@ function CloudBackup({ theme, session }: { theme: Theme; session: Session }) {
     setBusy('save');
     setMessage(null);
     try {
-      const updatedAt = await uploadHabits(userId, habits);
+      const updatedAt = await uploadHabits(client, userId, habits);
       setCloud({ habits, updatedAt });
       setMessage({ text: `Saved ${habits.length} habits to the cloud.`, error: false });
     } catch (e) {
@@ -301,7 +353,7 @@ function CloudBackup({ theme, session }: { theme: Theme; session: Session }) {
         <Text style={[styles.email, { color: theme.text }]} numberOfLines={1}>
           {session.user.email}
         </Text>
-        <Pressable onPress={() => supabase?.auth.signOut()} hitSlop={8}>
+        <Pressable onPress={() => client.auth.signOut()} hitSlop={8}>
           <Text style={{ color: theme.danger, fontWeight: '600' }}>Sign out</Text>
         </Pressable>
       </View>
@@ -393,7 +445,16 @@ function Button({
 }
 
 const styles = StyleSheet.create({
-  code: { fontFamily: 'monospace', fontSize: 13 },
+  connRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
   loginIcon: { alignItems: 'center', marginBottom: 6 },
   loginTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 16 },
   label: { fontSize: 12, fontWeight: '600', marginTop: 14, marginBottom: 6 },

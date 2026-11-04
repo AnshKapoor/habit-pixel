@@ -11,11 +11,12 @@
 ## Features
 
 - **Any frequency.** Daily habits show a 53-week grid like GitHub's contribution graph (one column per week, Mon–Sun). Weekly habits show one column per month with a tile per week. Monthly habits show a row per year.
-- **Yes/no or intensity.** Yes/no habits fill a tile in full colour. Intensity habits have a maximum you choose (e.g. 10, or 8 glasses), and the tile fades with how much you did: 3/10 is faint, 10/10 is full colour.
+- **Optional targets.** Set how many times per period counts as reaching the goal, e.g. *at least 3 times a week* or *8 times a month*, and the tile fills up as you get closer. Leave it at 0 for no target: any entry marks the period as done.
+- **Yes/no or intensity.** Every time you do a habit you log an entry. Intensity habits record a value with each entry, up to a maximum you choose (e.g. 10, or 8 km), and the tile fades with how much you did: 3/10 is faint, 10/10 is full colour.
 - **Your style.** Square, circle or star tiles, 8 colours, an emoji icon and an optional unit.
-- **Quick logging.** The round button on each card logs today, this week or this month. Tap any past tile to backfill or correct it.
-- **Streaks.** Current streak, best streak and total for every habit.
-- **Summary page.** Efficiency per habit and overall, over 30 days, 90 days, 12 months or all time, plus habits done today and active streaks.
+- **Entry list per period.** The round button on each card (today, this week or this month) and every tile in the grid open that period's numbered entries, where you add or remove single entries, or set it back to 0.
+- **Streaks.** Current and best streak of periods that reached the target, plus total entries, for every habit.
+- **Summary page.** Targets hit and efficiency per habit and overall, over 30 days, 90 days, 12 months or all time, plus this period's progress, habits at target today and active streaks.
 - **Backups.** Export everything to a JSON file and import it on any device, merging with or replacing what's there. Optional cloud backup with an email login (Supabase).
 - **Light and dark mode**, following your system setting. Works offline; data stays on the device unless you back it up.
 
@@ -31,18 +32,15 @@ On a wide screen (web):
 
 ## How efficiency is calculated
 
-Efficiency is counted per **period**: a day, week or month, depending on the habit.
+Habits are judged per **period**: a day, week or month, depending on the habit.
 
-| Habit type | Efficiency |
-| --- | --- |
-| Yes / no | periods done ÷ periods counted |
-| Intensity | average of `value ÷ max` over all periods; periods not logged count as **0** |
-
+- **Targets hit** = periods with at least *target* entries ÷ periods counted. Habits without a target (0) are left out of it; for them a period is done once anything is logged.
+- **Efficiency** also gives credit for partial progress. Each period scores `min(entries ÷ target, 1)`, multiplied for intensity habits by the average `value ÷ max` of its entries. Periods with nothing logged score **0**; efficiency is the average score.
 - Counting starts when the habit was created, or at its earliest logged entry if you backfilled.
-- The current day, week or month only counts once it's logged, so an unfinished today doesn't lower your score.
-- **Overall efficiency** is the average across habits, so every habit counts equally whatever its frequency.
+- The current day, week or month only counts once its target is reached, so an unfinished week doesn't lower your score.
+- **Overall** numbers are averages across habits, so every habit counts equally whatever its frequency.
 
-Example: reading 5/10 every day for 30 days gives 50%. Doing it 10/10 on 15 of those days and skipping the rest also gives 50%.
+Example: a *3 times a week* run. Weeks with 3 or more runs hit the target and score 100%; a week with 2 runs misses it but scores 67% towards efficiency. With target 1, reading 5/10 every day for 30 days gives 50% efficiency and 100% targets hit.
 
 ## Getting started
 
@@ -84,24 +82,25 @@ Imported files are checked: unreadable habits are skipped, missing settings get 
 ```json
 [
   { "name": "Read", "emoji": "📚", "frequency": "daily", "kind": "value", "maxValue": 10,
-    "entries": { "2026-11-01": 6, "2026-11-02": 9 } },
-  { "name": "Call family", "frequency": "monthly", "kind": "boolean", "shape": "star",
-    "entries": { "2026-10-01": 1 } }
+    "entries": { "2026-11-01": [6], "2026-11-02": [9, 4] } },
+  { "name": "Run", "frequency": "weekly", "kind": "boolean", "target": 3,
+    "entries": { "2026-10-27": [1, 1, 1] } }
 ]
 ```
 
-Entry keys are the start of each period: the date for daily habits, the **Monday** for weekly ones, and the **1st** for monthly ones.
+Entry keys are the start of each period: the date for daily habits, the **Monday** for weekly ones, and the **1st** for monthly ones. Each holds a list with one value per entry (`1` for yes/no habits). Files from older versions, with a single number per period and no `target`, still import.
 
 ### Cloud backup (optional, Supabase)
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Open **SQL Editor**, paste [`supabase/schema.sql`](supabase/schema.sql) and run it. This creates a `habit_backups` table with row-level security, so each user can only access their own backup.
-3. Copy `.env.example` to `.env`, then fill in the project URL and the **anon / publishable** key from **Project Settings → API**. Never put the `service_role` / secret key in the app.
-4. Restart the dev server; Expo reads `.env` only at startup.
+3. In the app, open **Account → Connect cloud** and paste the project URL and the **anon / publishable** key (from **Connect** or **Project Settings → API Keys**). The app checks the connection and stores it on the device. Never use the `service_role` / secret key; the app rejects it.
+
+The **How to set up** link next to the button opens the same steps as an in-app FAQ, including a **Copy SQL** button.
 
 You can then create an account in the **Account** tab and use **Save to cloud** / **Restore from cloud**. Each account keeps one backup, replaced on every save. Supabase asks new users to confirm their email by default; you can turn this off under **Authentication → Sign In / Providers → Email** while testing.
 
-For an APK build, add the two `EXPO_PUBLIC_SUPABASE_*` values as [EAS environment variables](https://docs.expo.dev/eas/environment-variables/), because `.env` is not uploaded.
+Optional: to ship a build that is already connected, put `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` in `.env` (see `.env.example`) or in [EAS environment variables](https://docs.expo.dev/eas/environment-variables/). A project entered in the app takes priority.
 
 ## Project structure
 
@@ -112,7 +111,7 @@ For an APK build, add the two `EXPO_PUBLIC_SUPABASE_*` values as [EAS environmen
 | `src/components/Heatmap.tsx` | Daily, weekly and monthly grids |
 | `src/components/HabitCard.tsx` | A habit card with stats and its grid |
 | `src/components/HabitEditor.tsx` | Add/edit habit form |
-| `src/components/LogValueSheet.tsx` | Value picker for intensity habits |
+| `src/components/EntriesSheet.tsx` | Entries of one period: add, remove, set to 0 |
 | `src/store.tsx` | Habit state, saved with AsyncStorage (localStorage on web) |
 | `src/dates.ts` | Period keys: day, Monday of the week, 1st of the month |
 | `src/stats.ts` | Intensity, streaks, totals |

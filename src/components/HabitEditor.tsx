@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { periodNoun } from '../dates';
 import { HABIT_COLORS, type Theme } from '../theme';
 import type { Frequency, Habit, HabitDraft, HabitKind, TileShape } from '../types';
+import { IconPicker } from './IconPicker';
 import { Segmented } from './Segmented';
 import { Tile } from './Tile';
 import { Sheet } from './Sheet';
-
-const EMOJIS = ['🏃', '📚', '💧', '🧘', '💪', '✍️', '🎸', '🥗', '😴', '🧹', '💻', '🌱'];
 
 const EMPTY: HabitDraft = {
   name: '',
@@ -17,7 +18,10 @@ const EMPTY: HabitDraft = {
   maxValue: 10,
   unit: '',
   shape: 'square',
+  target: 0,
 };
+
+const MAX_TARGET = 99;
 
 interface Props {
   visible: boolean;
@@ -34,13 +38,17 @@ export function HabitEditor({ visible, habit, theme, onSave, onDelete, onClose }
   const [maxText, setMaxText] = useState('10');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  useEffect(() => {
-    if (!visible) return;
-    const d: HabitDraft = habit ? { ...habit } : EMPTY;
-    setDraft(d);
-    setMaxText(String(d.maxValue));
-    setConfirmDelete(false);
-  }, [visible, habit]);
+  // Reset the form each time the sheet opens (adjusting state during render, not in an effect).
+  const [openedFor, setOpenedFor] = useState<{ visible: boolean; habit: Habit | null }>({ visible: false, habit: null });
+  if (openedFor.visible !== visible || openedFor.habit !== habit) {
+    setOpenedFor({ visible, habit });
+    if (visible) {
+      const d: HabitDraft = habit ? { ...habit } : EMPTY;
+      setDraft(d);
+      setMaxText(String(d.maxValue));
+      setConfirmDelete(false);
+    }
+  }
 
   const set = <K extends keyof HabitDraft>(k: K, v: HabitDraft[K]) => setDraft((d) => ({ ...d, [k]: v }));
 
@@ -78,28 +86,7 @@ export function HabitEditor({ visible, habit, theme, onSave, onDelete, onClose }
         />
 
         {label('Icon')}
-        <View style={styles.wrapRow}>
-          {EMOJIS.map((e) => (
-            <Pressable
-              key={e}
-              onPress={() => set('emoji', draft.emoji === e ? '' : e)}
-              style={[
-                styles.emoji,
-                { borderColor: draft.emoji === e ? draft.color : theme.border },
-                draft.emoji === e && { backgroundColor: theme.empty },
-              ]}
-            >
-              <Text style={{ fontSize: 18 }}>{e}</Text>
-            </Pressable>
-          ))}
-          <TextInput
-            value={EMOJIS.includes(draft.emoji) ? '' : draft.emoji}
-            onChangeText={(t) => set('emoji', t.trim().slice(0, 4))}
-            placeholder="other"
-            placeholderTextColor={theme.subtext}
-            style={[styles.emoji, styles.emojiInput, { color: theme.text, borderColor: theme.border }]}
-          />
-        </View>
+        <IconPicker value={draft.emoji} color={draft.color} theme={theme} onChange={(e) => set('emoji', e)} />
 
         {label('How often?')}
         <Segmented<Frequency>
@@ -118,6 +105,52 @@ export function HabitEditor({ visible, habit, theme, onSave, onDelete, onClose }
             Changing the frequency will clear this habit’s history.
           </Text>
         )}
+
+        {label('Target (optional)')}
+        <View style={styles.targetRow}>
+          {draft.target > 0 ? <Text style={{ color: theme.text, fontSize: 15 }}>At least</Text> : null}
+          <View style={[styles.stepper, { borderColor: theme.border }]}>
+            <Pressable
+              onPress={() => set('target', Math.max(0, draft.target - 1))}
+              disabled={draft.target <= 0}
+              hitSlop={6}
+              accessibilityLabel="Lower target"
+              style={[styles.stepBtn, { opacity: draft.target <= 0 ? 0.35 : 1 }]}
+            >
+              <Ionicons name="remove" size={20} color={theme.text} />
+            </Pressable>
+            <TextInput
+              value={String(draft.target)}
+              onChangeText={(t) => {
+                const n = parseInt(t.replace(/\D/g, ''), 10);
+                set('target', Number.isFinite(n) ? Math.min(MAX_TARGET, Math.max(0, n)) : 0);
+              }}
+              keyboardType="number-pad"
+              selectTextOnFocus
+              accessibilityLabel="Target"
+              style={[styles.stepValue, { color: theme.text }]}
+            />
+            <Pressable
+              onPress={() => set('target', Math.min(MAX_TARGET, draft.target + 1))}
+              disabled={draft.target >= MAX_TARGET}
+              hitSlop={6}
+              accessibilityLabel="Raise target"
+              style={styles.stepBtn}
+            >
+              <Ionicons name="add" size={20} color={theme.text} />
+            </Pressable>
+          </View>
+          <Text style={{ color: draft.target > 0 ? theme.text : theme.subtext, fontSize: 15 }}>
+            {draft.target === 0
+              ? 'No target'
+              : `${draft.target === 1 ? 'time' : 'times'} per ${periodNoun(draft.frequency)}`}
+          </Text>
+        </View>
+        <Text style={[styles.small, { color: theme.subtext, marginTop: 6 }]}>
+          {draft.target === 0
+            ? `Optional. With no target, any entry marks the ${periodNoun(draft.frequency)} as done. Set 1 or more to track a goal like “3 times a week” in Summary.`
+            : `Log each time you do it. A ${periodNoun(draft.frequency)} counts as reached once it has ${draft.target} ${draft.target === 1 ? 'entry' : 'entries'}.`}
+        </Text>
 
         {label('What do you track?')}
         <Segmented<HabitKind>
@@ -180,7 +213,7 @@ export function HabitEditor({ visible, habit, theme, onSave, onDelete, onClose }
 
         {label('Preview')}
         <View style={[styles.wrapRow, { alignItems: 'center' }]}>
-          {(draft.kind === 'value' ? [0, 0.2, 0.4, 0.6, 0.8, 1] : [0, 1, 1, 0, 1, 1]).map((s, i) => (
+          {(draft.kind === 'value' || draft.target > 1 ? [0, 0.2, 0.4, 0.6, 0.8, 1] : [0, 1, 1, 0, 1, 1]).map((s, i) => (
             <Tile key={i} size={22} shape={draft.shape} color={draft.color} strength={s} theme={theme} />
           ))}
         </View>
@@ -219,15 +252,10 @@ const styles = StyleSheet.create({
   warn: { fontSize: 12, marginTop: 6 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16 },
   wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  emoji: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emojiInput: { width: 64, textAlign: 'center', fontSize: 14 },
+  targetRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
+  stepper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10 },
+  stepBtn: { paddingHorizontal: 10, paddingVertical: 8 },
+  stepValue: { width: 40, textAlign: 'center', fontSize: 16, fontWeight: '700', paddingVertical: 6 },
   swatch: { width: 32, height: 32, borderRadius: 16, borderWidth: 3 },
   primary: { marginTop: 24, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   primaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },

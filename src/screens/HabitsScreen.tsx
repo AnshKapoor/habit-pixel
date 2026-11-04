@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { HabitCard } from '../components/HabitCard';
 import { HabitEditor } from '../components/HabitEditor';
-import { LogValueSheet } from '../components/LogValueSheet';
+import { EntriesSheet } from '../components/EntriesSheet';
 import { formatPeriod, toKey } from '../dates';
 import { useStore } from '../store';
 import type { Theme } from '../theme';
@@ -11,17 +11,13 @@ import type { Habit } from '../types';
 import { screenStyles } from './screenStyles';
 
 export function HabitsScreen({ theme }: { theme: Theme }) {
-  const { loaded, habits, addHabit, updateHabit, deleteHabit, setEntry } = useStore();
+  const { loaded, habits, addHabit, updateHabit, deleteHabit, addEntry, removeEntry, clearPeriod } = useStore();
 
   // `undefined` = editor closed, `null` = creating a new habit.
   const [editing, setEditing] = useState<Habit | null | undefined>(undefined);
   const [logging, setLogging] = useState<{ id: string; key: string } | null>(null);
   const loggingHabit = logging ? (habits.find((h) => h.id === logging.id) ?? null) : null;
 
-  const onLog = (habit: Habit, key: string) => {
-    if (habit.kind === 'boolean') setEntry(habit.id, key, habit.entries[key] ? null : 1);
-    else setLogging({ id: habit.id, key });
-  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -48,7 +44,7 @@ export function HabitsScreen({ theme }: { theme: Theme }) {
               habit={h}
               theme={theme}
               onEdit={() => setEditing(h)}
-              onLog={(key) => onLog(h, key)}
+              onLog={(key) => setLogging({ id: h.id, key })}
             />
           ))
         )}
@@ -78,15 +74,14 @@ export function HabitsScreen({ theme }: { theme: Theme }) {
         }}
       />
 
-      <LogValueSheet
+      <EntriesSheet
         habit={loggingHabit}
         periodKey={logging?.key ?? null}
         theme={theme}
         onClose={() => setLogging(null)}
-        onSave={(value) => {
-          if (logging) setEntry(logging.id, logging.key, value);
-          setLogging(null);
-        }}
+        onAdd={(value) => logging && addEntry(logging.id, logging.key, value)}
+        onRemove={(index) => logging && removeEntry(logging.id, logging.key, index)}
+        onClear={() => logging && clearPeriod(logging.id, logging.key)}
       />
     </View>
   );

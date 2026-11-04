@@ -3,11 +3,13 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
 import { toKey } from './dates';
+import { normalizeHabit } from './stats';
 import { HABIT_COLORS } from './theme';
 import type { Frequency, Habit, HabitKind, TileShape } from './types';
 
 const FORMAT = 'habit-pixel';
-const VERSION = 1;
+/** 2: entries hold a list of values per period and habits have an optional target. Version 1 files still import. */
+const VERSION = 2;
 
 function fileName(): string {
   return `habit-pixel-${toKey(new Date())}.json`;
@@ -77,28 +79,26 @@ function readHabit(raw: unknown, index: number): Habit | null {
   const maxValue =
     kind === 'value' && typeof raw.maxValue === 'number' && raw.maxValue >= 1 ? Math.round(raw.maxValue) : kind === 'value' ? 10 : 1;
 
-  const entries: Record<string, number> = {};
+  // Keep well-formed period keys; normalizeHabit below validates the values (a number in v1, a list in v2).
+  const entries: Record<string, unknown> = {};
   if (isObject(raw.entries)) {
-    for (const [k, v] of Object.entries(raw.entries)) {
-      if (KEY_RE.test(k) && typeof v === 'number' && Number.isFinite(v) && v > 0) {
-        entries[k] = kind === 'boolean' ? 1 : Math.min(v, maxValue);
-      }
-    }
+    for (const [k, v] of Object.entries(raw.entries)) if (KEY_RE.test(k)) entries[k] = v;
   }
 
-  return {
+  return normalizeHabit({
     id: typeof raw.id === 'string' && raw.id ? raw.id : `import-${Date.now().toString(36)}-${index}`,
     name,
-    emoji: typeof raw.emoji === 'string' ? raw.emoji.slice(0, 4) : '',
+    emoji: typeof raw.emoji === 'string' ? raw.emoji.slice(0, 16) : '',
     color: typeof raw.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.color) ? raw.color : HABIT_COLORS[0],
     frequency,
     kind,
     maxValue,
     unit: kind === 'value' && typeof raw.unit === 'string' ? raw.unit : '',
     shape: SHAPES.includes(raw.shape as TileShape) ? (raw.shape as TileShape) : 'square',
+    target: typeof raw.target === 'number' ? raw.target : 0,
     createdAt: typeof raw.createdAt === 'string' && KEY_RE.test(raw.createdAt) ? raw.createdAt : toKey(new Date()),
-    entries,
-  };
+    entries: entries as Habit['entries'],
+  });
 }
 
 /** Accepts a Habit Pixel export file, or a bare array of habits. Throws with a readable message if unusable. */
@@ -123,7 +123,7 @@ export function parseBackup(text: string): ParsedBackup {
 
 /**
  * Combine imported habits with the current ones. A habit already on this device (same id) takes the imported
- * settings, and its history is combined, with the file's value winning on days logged in both. New habits are added.
+ * settings, and its history is combined, with the file's entries winning for periods logged in both. New habits are added.
  */
 export function mergeHabits(current: Habit[], imported: Habit[]): { habits: Habit[]; added: number; updated: number } {
   const byId = new Map(imported.map((h) => [h.id, h]));
@@ -135,9 +135,7 @@ export function mergeHabits(current: Habit[], imported: Habit[]): { habits: Habi
     updated++;
     // Entries are only comparable when the frequency matches; otherwise the file's version replaces it.
     const entries = inc.frequency === h.frequency ? { ...h.entries, ...inc.entries } : inc.entries;
-    if (inc.kind === 'boolean') for (const k of Object.keys(entries)) entries[k] = 1;
-    else for (const k of Object.keys(entries)) entries[k] = Math.min(entries[k], inc.maxValue);
-    return { ...inc, entries, createdAt: h.createdAt < inc.createdAt ? h.createdAt : inc.createdAt };
+    return normalizeHabit({ ...inc, entries, createdAt: h.createdAt < inc.createdAt ? h.createdAt : inc.createdAt });
   });
   const added = [...byId.values()];
   return { habits: [...habits, ...added], added: added.length, updated };

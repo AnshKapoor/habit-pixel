@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toKey } from './dates';
+import { normalizeHabit } from './stats';
 import type { Habit, HabitDraft } from './types';
 
 const STORAGE_KEY = 'habit-pixel/habits/v1';
@@ -11,8 +12,12 @@ interface Store {
   addHabit: (draft: HabitDraft) => void;
   updateHabit: (id: string, draft: HabitDraft) => void;
   deleteHabit: (id: string) => void;
-  /** `null` or 0 clears the entry for that period. */
-  setEntry: (id: string, key: string, value: number | null) => void;
+  /** Log one more entry (value 1 for done / not done habits) in the period starting at `key`. */
+  addEntry: (id: string, key: string, value: number) => void;
+  /** Remove the entry at `index` from that period. */
+  removeEntry: (id: string, key: string, index: number) => void;
+  /** Remove every entry in that period (back to 0 / not done). */
+  clearPeriod: (id: string, key: string) => void;
   /** Replace everything, e.g. when restoring a cloud backup. */
   replaceHabits: (habits: Habit[]) => void;
 }
@@ -30,7 +35,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
       .then((raw) => {
-        if (raw) setHabits(JSON.parse(raw));
+        // normalizeHabit upgrades data saved by older versions (one value per period, no target).
+        if (raw) setHabits((JSON.parse(raw) as Habit[]).map(normalizeHabit));
       })
       .catch((e) => console.warn('Failed to load habits', e))
       .finally(() => setLoaded(true));
@@ -57,7 +63,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // Clamp values when the scale shrinks or the habit becomes yes/no.
         else if (draft.kind === 'boolean' || draft.maxValue < h.maxValue) {
           entries = Object.fromEntries(
-            Object.entries(entries).map(([k, v]) => [k, draft.kind === 'boolean' ? 1 : Math.min(v, draft.maxValue)]),
+            Object.entries(entries).map(([k, list]) => [
+              k,
+              list.map((v) => (draft.kind === 'boolean' ? 1 : Math.min(v, draft.maxValue))),
+            ]),
           );
         }
         return { ...h, ...draft, entries };
@@ -69,21 +78,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setHabits((hs) => hs.filter((h) => h.id !== id));
   }, []);
 
-  const setEntry = useCallback((id: string, key: string, value: number | null) => {
+  const changeEntries = useCallback((id: string, key: string, change: (list: number[]) => number[]) => {
     setHabits((hs) =>
       hs.map((h) => {
         if (h.id !== id) return h;
         const entries = { ...h.entries };
-        if (value && value > 0) entries[key] = value;
+        const list = change(entries[key] ?? []);
+        if (list.length) entries[key] = list;
         else delete entries[key];
         return { ...h, entries };
       }),
     );
   }, []);
 
+  const addEntry = useCallback(
+    (id: string, key: string, value: number) => {
+      if (value > 0) changeEntries(id, key, (list) => [...list, value]);
+    },
+    [changeEntries],
+  );
+  const removeEntry = useCallback(
+    (id: string, key: string, index: number) => changeEntries(id, key, (list) => list.filter((_, i) => i !== index)),
+    [changeEntries],
+  );
+  const clearPeriod = useCallback((id: string, key: string) => changeEntries(id, key, () => []), [changeEntries]);
+
   const value = useMemo(
-    () => ({ loaded, habits, addHabit, updateHabit, deleteHabit, setEntry, replaceHabits: setHabits }),
-    [loaded, habits, addHabit, updateHabit, deleteHabit, setEntry],
+    () => ({
+      loaded,
+      habits,
+      addHabit,
+      updateHabit,
+      deleteHabit,
+      addEntry,
+      removeEntry,
+      clearPeriod,
+      replaceHabits: setHabits,
+    }),
+    [loaded, habits, addHabit, updateHabit, deleteHabit, addEntry, removeEntry, clearPeriod],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

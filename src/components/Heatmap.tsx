@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
 import { addDays, addMonths, fromKey, MONTHS, startOfDay, startOfMonth, startOfWeek, toKey } from '../dates';
-import { intensity } from '../stats';
+import { periodStrength } from '../stats';
 import type { Theme } from '../theme';
 import type { Habit } from '../types';
 import { Tile } from './Tile';
@@ -95,7 +95,7 @@ function DailyGrid({ habit, theme, onTilePress }: Props) {
                         size={D_SIZE}
                         shape={habit.shape}
                         color={habit.color}
-                        strength={intensity(habit, habit.entries[key])}
+                        strength={periodStrength(habit, key)}
                         theme={theme}
                         current={key === todayKey}
                         onPress={() => onTilePress(key)}
@@ -154,7 +154,7 @@ function WeeklyGrid({ habit, theme, onTilePress }: Props) {
                     size={W_SIZE}
                     shape={habit.shape}
                     color={habit.color}
-                    strength={intensity(habit, habit.entries[key])}
+                    strength={periodStrength(habit, key)}
                     theme={theme}
                     current={key === currentKey}
                     future={monday > today}
@@ -205,7 +205,7 @@ function MonthlyGrid({ habit, theme, onTilePress }: Props) {
                   size={M_SIZE}
                   shape={habit.shape}
                   color={habit.color}
-                  strength={intensity(habit, habit.entries[key])}
+                  strength={periodStrength(habit, key)}
                   theme={theme}
                   current={key === currentKey}
                   future={start > today}

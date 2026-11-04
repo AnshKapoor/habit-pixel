@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Segmented } from '../components/Segmented';
 import { periodKey, periodNoun } from '../dates';
-import { currentStreak } from '../stats';
+import { currentStreak, hasTarget, periodCount, targetMet } from '../stats';
 import { useStore } from '../store';
 import {
   formatPercent,
   overallEfficiency,
+  overallTargetRate,
   rangeStart,
   summarizeHabit,
   type HabitSummary,
@@ -34,9 +35,10 @@ export function SummaryScreen({ theme }: { theme: Theme }) {
   }, [habits, range]);
 
   const overall = overallEfficiency(summaries);
+  const targets = overallTargetRate(summaries);
   const now = new Date();
   const daily = habits.filter((h) => h.frequency === 'daily');
-  const doneToday = daily.filter((h) => h.entries[periodKey(now, 'daily')] > 0).length;
+  const doneToday = daily.filter((h) => targetMet(h, periodKey(now, 'daily'))).length;
   const activeStreaks = habits.filter((h) => currentStreak(h) > 0).length;
   const count = (f: string) => habits.filter((h) => h.frequency === f).length;
 
@@ -53,6 +55,17 @@ export function SummaryScreen({ theme }: { theme: Theme }) {
         <Stat theme={theme} label="Overall efficiency" value={formatPercent(overall)} accent={theme.accent} />
         <Stat
           theme={theme}
+          label="Targets hit"
+          value={formatPercent(targets)}
+          detail={
+            targets === null
+              ? 'no habit has a target yet'
+              : 'share of periods that reached their target (habits with a target)'
+          }
+          accent={theme.accent}
+        />
+        <Stat
+          theme={theme}
           label="Habits"
           value={String(habits.length)}
           detail={`${count('daily')} daily · ${count('weekly')} weekly · ${count('monthly')} monthly`}
@@ -61,7 +74,7 @@ export function SummaryScreen({ theme }: { theme: Theme }) {
           theme={theme}
           label="Done today"
           value={daily.length ? `${doneToday}/${daily.length}` : '–'}
-          detail="daily habits"
+          detail="daily habits done (target reached)"
         />
         <Stat theme={theme} label="Active streaks" value={String(activeStreaks)} detail={`of ${habits.length}`} />
       </View>
@@ -76,10 +89,12 @@ export function SummaryScreen({ theme }: { theme: Theme }) {
       </View>
 
       <Text style={[styles.note, { color: theme.subtext }]}>
-        Efficiency is counted per period (day, week or month, depending on the habit), from when the habit was created
-        or first logged. Done/not-done habits: share of periods done. Intensity habits: average of value ÷ maximum,
-        where periods not logged count as 0. The current period is only counted once it’s logged. Overall efficiency
-        is the average across habits.
+        Each habit is judged per period (day, week or month), from when it was created or first logged. Targets hit is
+        the share of periods with at least the target number of entries; habits without a target are left out of it.
+        Efficiency also gives credit for partial progress: entries ÷ target (capped at 100%; any entry counts in full
+        without a target), times the average value ÷ maximum for intensity habits; periods with nothing logged count
+        as 0. The current period is only counted once its target is reached (or once logged, without a target). The
+        overall numbers are averages across habits.
       </Text>
     </ScrollView>
   );
@@ -108,9 +123,15 @@ function Stat({
 }
 
 function HabitRow({ summary, theme, first }: { summary: HabitSummary; theme: Theme; first: boolean }) {
-  const { habit, periods, done, efficiency, averageValue } = summary;
+  const { habit, periods, targetHit, targetRate, entries, efficiency, averageValue } = summary;
   const noun = periodNoun(habit.frequency);
   const pct = efficiency ?? 0;
+  const nowKey = periodKey(new Date(), habit.frequency);
+  const nowCount = periodCount(habit, nowKey);
+  const nowMet = targetMet(habit, nowKey);
+  const withTarget = hasTarget(habit);
+  const periodLabel = habit.frequency === 'daily' ? 'Today' : `This ${noun}`;
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
   return (
     <View style={[styles.row, !first && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border }]}>
@@ -124,12 +145,33 @@ function HabitRow({ summary, theme, first }: { summary: HabitSummary; theme: The
       <View style={[styles.track, { backgroundColor: theme.empty }]}>
         <View style={[styles.fill, { backgroundColor: habit.color, width: `${Math.round(pct * 100)}%` }]} />
       </View>
+      <View style={styles.badges}>
+        <View
+          style={[
+            styles.badge,
+            { borderColor: nowMet ? habit.color : theme.border, backgroundColor: nowMet ? habit.color : 'transparent' },
+          ]}
+        >
+          <Text style={[styles.badgeText, { color: nowMet ? '#fff' : theme.text }]}>
+            {nowMet ? '✓ ' : ''}
+            {periodLabel}:{' '}
+            {withTarget ? `${nowCount}/${habit.target}` : `${nowCount} ${nowCount === 1 ? 'entry' : 'entries'}`}
+          </Text>
+        </View>
+        {periods > 0 ? (
+          <Text style={[styles.rowMeta, { color: theme.subtext, marginTop: 0 }]}>
+            {withTarget
+              ? `Target (${habit.target}×/${noun}) hit in ${targetHit} of ${plural(periods, noun)} · ${formatPercent(targetRate)}`
+              : `Done in ${targetHit} of ${plural(periods, noun)} · no target`}
+          </Text>
+        ) : null}
+      </View>
       <Text style={[styles.rowMeta, { color: theme.subtext }]}>
         {periods === 0
-          ? `Nothing to count yet — log this ${noun} to start`
-          : `Done ${done} of ${periods} ${noun}${periods === 1 ? '' : 's'}`}
+          ? `Nothing to count yet — ${withTarget ? `reach this ${noun}’s target` : `log this ${noun}`} to start`
+          : `${entries} ${entries === 1 ? 'entry' : 'entries'} logged`}
         {averageValue !== null
-          ? ` · avg ${averageValue.toFixed(1)}/${habit.maxValue}${habit.unit ? ` ${habit.unit}` : ''} when done`
+          ? ` · avg ${averageValue.toFixed(1)}/${habit.maxValue}${habit.unit ? ` ${habit.unit}` : ''} per entry`
           : ''}
       </Text>
     </View>
@@ -155,5 +197,8 @@ const styles = StyleSheet.create({
   track: { height: 8, borderRadius: 4, overflow: 'hidden' },
   fill: { height: 8, borderRadius: 4 },
   rowMeta: { fontSize: 12, marginTop: 6 },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 8 },
+  badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  badgeText: { fontSize: 12, fontWeight: '600' },
   note: { fontSize: 12, lineHeight: 17, marginTop: 4, marginBottom: 8 },
 });
