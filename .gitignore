@@ -43,3 +43,8 @@ yarn-error.*
 
 # local Claude Code config
 .claude/
+
+# desktop (Electron) build output
+desktop/app/web/
+desktop/app/icon.png
+desktop/release/

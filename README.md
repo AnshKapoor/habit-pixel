@@ -66,6 +66,22 @@ npx eas-cli@latest build -p android --profile preview
 
 When the build finishes (about 10–20 minutes), open the link on your phone to download and install the APK.
 
+### On Windows (desktop app)
+
+The desktop app is the web build in an [Electron](https://www.electronjs.org/) window, with its own icon, Start-menu entry and offline storage.
+
+```bash
+npm run desktop         # build the web app and open it in a desktop window
+npm run desktop:build   # make the Windows installer and a portable .exe
+```
+
+`desktop:build` writes to `desktop/release/`:
+
+- `Habit-Pixel-Setup-<version>.exe`: installer (choose the folder, adds Start-menu and desktop shortcuts, uninstalls from Windows Settings).
+- `Habit-Pixel-<version>-portable.exe`: single file that runs without installing.
+
+The files are not code-signed, so Windows SmartScreen shows a warning the first time; choose **More info → Run anyway**. Habits are stored on that PC (`%APPDATA%\Habit Pixel`); use JSON export/import or cloud backup to move them between the phone and the desktop. The version comes from `app.json`.
+
 ## Backups
 
 ### JSON file (no account needed)
@@ -119,8 +135,9 @@ Optional: to ship a build that is already connected, put `EXPO_PUBLIC_SUPABASE_U
 | `src/backup.ts` | JSON export/import, validation, merge |
 | `src/cloud.ts` | Supabase client, login session, cloud save/restore |
 | `supabase/schema.sql` | Database table and access rules for cloud backups |
+| `desktop/` | Electron shell (`app/main.js`), build script and installer config |
 
-**Tech:** Expo SDK 58 · React Native 0.88 · TypeScript · react-native-web · Supabase · AsyncStorage
+**Tech:** Expo SDK 58 · React Native 0.88 · TypeScript · react-native-web · Electron · Supabase · AsyncStorage
 
 ## License
 

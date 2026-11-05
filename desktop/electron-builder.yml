@@ -1,0 +1,26 @@
+# Windows installer + portable .exe for Habit Pixel. Run `npm run desktop:build`.
+# Only desktop/app is packaged (main.js + the web build), not the Expo project's node_modules.
+appId: com.habitpixel.desktop
+productName: Habit Pixel
+electronVersion: 45.2.3
+directories:
+  app: desktop/app
+  output: desktop/release
+files:
+  - '**/*'
+  # desktop/app has no dependencies; never pull in the Expo project's node_modules.
+  - '!node_modules{,/**/*}'
+npmRebuild: false
+win:
+  icon: assets/icon.png
+  target:
+    - nsis
+    - portable
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Habit Pixel
+  artifactName: Habit-Pixel-Setup-${version}.exe
+portable:
+  artifactName: Habit-Pixel-${version}-portable.exe

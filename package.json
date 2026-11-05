@@ -23,6 +23,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~58.0.4",
     "typescript": "~6.0.3"
@@ -32,7 +34,10 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "desktop:web": "node desktop/prepare.js",
+    "desktop": "npm run desktop:web && electron desktop/app",
+    "desktop:build": "npm run desktop:web && electron-builder --config desktop/electron-builder.yml --win"
   },
   "private": true
 }
