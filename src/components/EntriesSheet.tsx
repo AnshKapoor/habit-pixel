@@ -14,13 +14,18 @@ interface Props {
   periodKey: string | null;
   theme: Theme;
   onAdd: (value: number) => void;
+  /** Replace the period's entries with this one value (habits without a target). */
+  onSet: (value: number) => void;
   onRemove: (index: number) => void;
   onClear: () => void;
   onClose: () => void;
 }
 
-/** Every entry logged for one day / week / month, with buttons to add or remove single entries. */
-export function EntriesSheet({ habit, periodKey, theme, onAdd, onRemove, onClear, onClose }: Props) {
+/**
+ * One day / week / month of a habit. With a target, a numbered list of entries you add or remove one by one.
+ * Without a target there is only one entry per period: done / not done, or a single value for intensity habits.
+ */
+export function EntriesSheet({ habit, periodKey, theme, onAdd, onSet, onRemove, onClear, onClose }: Props) {
   const [text, setText] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const [shownFor, setShownFor] = useState<string | null>(null);
@@ -39,11 +44,17 @@ export function EntriesSheet({ habit, periodKey, theme, onAdd, onRemove, onClear
   const noun = periodNoun(habit.frequency);
   const unit = habit.unit ? ` ${habit.unit}` : '';
   const isValue = habit.kind === 'value';
+  // Without a target, more than one entry per period means nothing: log (or replace) a single one.
+  const single = !withTarget;
+  // Older data may still hold several entries; then show the list so they can be removed.
+  const showList = !single || count > 1;
+  const current = single && count === 1 ? entries[0] : null;
+  const log = (v: number) => (single ? onSet(v) : onAdd(v));
 
   const submitText = () => {
     const n = Number(text.replace(',', '.'));
     if (!text.trim() || !Number.isFinite(n) || n <= 0) return;
-    onAdd(Math.min(habit.maxValue, n));
+    log(Math.min(habit.maxValue, n));
     setText('');
   };
 
@@ -89,11 +100,36 @@ export function EntriesSheet({ habit, periodKey, theme, onAdd, onRemove, onClear
           </View>
         ) : null}
 
+        {/* Status for single-entry habits */}
+        {single && !showList ? (
+          <View
+            style={[
+              styles.status,
+              { borderColor: count ? habit.color : theme.border, backgroundColor: count ? habit.color : 'transparent' },
+            ]}
+          >
+            <Ionicons
+              name={count ? 'checkmark-circle' : 'ellipse-outline'}
+              size={22}
+              color={count ? '#fff' : theme.subtext}
+            />
+            <Text style={{ color: count ? '#fff' : theme.text, fontSize: 16, fontWeight: '700' }}>
+              {count === 0
+                ? `Not done this ${noun}`
+                : isValue && current !== null
+                  ? `Done · ${formatValue(current)} / ${habit.maxValue}${unit}`
+                  : 'Done'}
+            </Text>
+          </View>
+        ) : null}
+
         {/* Logged entries */}
-        <Text style={[styles.label, { color: theme.subtext }]}>
-          {count === 0 ? 'No entries yet' : `${count} ${count === 1 ? 'entry' : 'entries'}`}
-        </Text>
-        {entries.map((v, i) => (
+        {showList ? (
+          <Text style={[styles.label, { color: theme.subtext }]}>
+            {count === 0 ? 'No entries yet' : `${count} ${count === 1 ? 'entry' : 'entries'}`}
+          </Text>
+        ) : null}
+        {showList && entries.map((v, i) => (
           <View key={i} style={[styles.entry, { borderColor: theme.border }]}>
             <View style={[styles.entryNum, { backgroundColor: habit.color }]}>
               <Text style={styles.entryNumText}>{i + 1}</Text>
@@ -124,8 +160,25 @@ export function EntriesSheet({ habit, periodKey, theme, onAdd, onRemove, onClear
         ))}
 
         {/* Add an entry */}
-        <Text style={[styles.label, { color: theme.subtext }]}>{isValue ? 'Add an entry with value' : 'Add'}</Text>
-        {!isValue ? (
+        {single && !isValue ? (
+          count === 0 ? (
+            <Pressable
+              onPress={() => onSet(1)}
+              style={({ pressed }) => [
+                styles.addBtn,
+                { marginTop: 14, backgroundColor: habit.color, opacity: pressed ? 0.85 : 1 },
+              ]}
+            >
+              <Ionicons name="checkmark" size={20} color="#fff" />
+              <Text style={styles.addText}>Mark as done</Text>
+            </Pressable>
+          ) : null
+        ) : (
+          <Text style={[styles.label, { color: theme.subtext }]}>
+            {!isValue ? 'Add' : single ? (count ? 'Change value' : 'Value') : 'Add an entry with value'}
+          </Text>
+        )}
+        {single && !isValue ? null : !isValue ? (
           <Pressable
             onPress={() => onAdd(1)}
             style={({ pressed }) => [styles.addBtn, { backgroundColor: habit.color, opacity: pressed ? 0.85 : 1 }]}
@@ -137,14 +190,20 @@ export function EntriesSheet({ habit, periodKey, theme, onAdd, onRemove, onClear
           <View style={styles.chips}>
             {Array.from({ length: habit.maxValue }, (_, i) => i + 1).map((v) => {
               const strength = valueStrength(habit, v);
+              const selected = current === v;
               return (
                 <Pressable
                   key={v}
-                  onPress={() => onAdd(v)}
-                  accessibilityLabel={`Add entry with value ${v}`}
+                  onPress={() => log(v)}
+                  accessibilityLabel={single ? `Set value ${v}` : `Add entry with value ${v}`}
+                  accessibilityState={{ selected }}
                   style={({ pressed }) => [
                     styles.chip,
-                    { backgroundColor: tileColor(habit.color, strength, theme.empty), opacity: pressed ? 0.7 : 1 },
+                    {
+                      backgroundColor: tileColor(habit.color, strength, theme.empty),
+                      borderColor: selected ? theme.text : 'transparent',
+                      opacity: pressed ? 0.7 : 1,
+                    },
                   ]}
                 >
                   <Text style={{ color: strength > 0.55 ? '#fff' : theme.text, fontWeight: '600' }}>{v}</Text>
@@ -164,7 +223,7 @@ export function EntriesSheet({ habit, periodKey, theme, onAdd, onRemove, onClear
               style={[styles.input, { color: theme.text, borderColor: theme.border }]}
             />
             <Pressable onPress={submitText} style={[styles.button, { backgroundColor: habit.color }]}>
-              <Text style={{ color: '#fff', fontWeight: '600' }}>Add</Text>
+              <Text style={{ color: '#fff', fontWeight: '600' }}>{single ? 'Save' : 'Add'}</Text>
             </Pressable>
           </View>
         )}
@@ -230,9 +289,19 @@ const styles = StyleSheet.create({
   },
   addText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  chip: { width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
+  status: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 14,
+  },
   input: { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16 },
   button: { paddingHorizontal: 18, paddingVertical: 12, borderRadius: 10 },
-  zeroBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  zeroBtn: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
   footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 },
 });

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Theme } from '../theme';
 
 const WIDE = 600;
@@ -17,18 +18,33 @@ export function Sheet({
   children: ReactNode;
 }) {
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const wide = width >= WIDE;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={[styles.wrap, { height, justifyContent: wide ? 'center' : 'flex-end', padding: wide ? 24 : 0 }]}>
+    // Draw under the status and navigation bars on Android (edge-to-edge) and pad for them ourselves,
+    // so the bottom of the sheet is never hidden behind the gesture / button bar.
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+      navigationBarTranslucent
+    >
+      <View style={[styles.wrap, { justifyContent: wide ? 'center' : 'flex-end', padding: wide ? 24 : 0 }]}>
         <Pressable style={styles.backdrop} onPress={onClose} />
         <View
           style={[
             styles.sheet,
             wide ? styles.dialog : styles.bottom,
             // A pixel cap (not a percentage) so the content scrolls instead of overflowing the screen.
-            { maxHeight: height * (wide ? 0.9 : 0.92), backgroundColor: theme.card, borderColor: theme.border },
+            {
+              maxHeight: wide ? height * 0.9 : height - insets.top - 24,
+              paddingBottom: wide ? 20 : 20 + insets.bottom,
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+            },
           ]}
         >
           {children}
@@ -39,7 +55,7 @@ export function Sheet({
 }
 
 const styles = StyleSheet.create({
-  wrap: { width: '100%', alignItems: 'center' },
+  wrap: { flex: 1, width: '100%', alignItems: 'center' },
   backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
     width: '100%',

@@ -14,6 +14,8 @@ interface Store {
   deleteHabit: (id: string) => void;
   /** Log one more entry (value 1 for done / not done habits) in the period starting at `key`. */
   addEntry: (id: string, key: string, value: number) => void;
+  /** Make `value` the only entry in that period (habits without a target log once per period). */
+  setOnlyEntry: (id: string, key: string, value: number) => void;
   /** Remove the entry at `index` from that period. */
   removeEntry: (id: string, key: string, index: number) => void;
   /** Remove every entry in that period (back to 0 / not done). */
@@ -97,6 +99,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [changeEntries],
   );
+  const setOnlyEntry = useCallback(
+    (id: string, key: string, value: number) => {
+      if (value > 0) changeEntries(id, key, () => [value]);
+    },
+    [changeEntries],
+  );
   const removeEntry = useCallback(
     (id: string, key: string, index: number) => changeEntries(id, key, (list) => list.filter((_, i) => i !== index)),
     [changeEntries],
@@ -111,11 +119,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateHabit,
       deleteHabit,
       addEntry,
+      setOnlyEntry,
       removeEntry,
       clearPeriod,
       replaceHabits: setHabits,
     }),
-    [loaded, habits, addHabit, updateHabit, deleteHabit, addEntry, removeEntry, clearPeriod],
+    [loaded, habits, addHabit, updateHabit, deleteHabit, addEntry, setOnlyEntry, removeEntry, clearPeriod],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

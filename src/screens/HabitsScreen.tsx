@@ -11,7 +11,8 @@ import type { Habit } from '../types';
 import { screenStyles } from './screenStyles';
 
 export function HabitsScreen({ theme }: { theme: Theme }) {
-  const { loaded, habits, addHabit, updateHabit, deleteHabit, addEntry, removeEntry, clearPeriod } = useStore();
+  const { loaded, habits, addHabit, updateHabit, deleteHabit, addEntry, setOnlyEntry, removeEntry, clearPeriod } =
+    useStore();
 
   // `undefined` = editor closed, `null` = creating a new habit.
   const [editing, setEditing] = useState<Habit | null | undefined>(undefined);
@@ -80,6 +81,7 @@ export function HabitsScreen({ theme }: { theme: Theme }) {
         theme={theme}
         onClose={() => setLogging(null)}
         onAdd={(value) => logging && addEntry(logging.id, logging.key, value)}
+        onSet={(value) => logging && setOnlyEntry(logging.id, logging.key, value)}
         onRemove={(index) => logging && removeEntry(logging.id, logging.key, index)}
         onClear={() => logging && clearPeriod(logging.id, logging.key)}
       />
