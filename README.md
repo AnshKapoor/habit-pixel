@@ -17,7 +17,7 @@
 - **Entry list per period.** The round button on each card (today, this week or this month) and every tile in the grid open that period's numbered entries, where you add or remove single entries, or set it back to 0.
 - **Streaks.** Current and best streak of periods that reached the target, plus total entries, for every habit.
 - **Summary page.** Targets hit and efficiency per habit and overall, over 30 days, 90 days, 12 months or all time, plus this period's progress, habits at target today and active streaks.
-- **Backups.** Export everything to a JSON file and import it on any device, merging with or replacing what's there. Optional cloud backup with an email login (Supabase).
+- **Backups.** Export everything as an Excel file (opens in Excel and Google Sheets) or JSON, and import it on any device, merging with or replacing what's there. Import straight from a Google Sheets link. Optional cloud backup with an email login (Supabase).
 - **Light and dark mode**, following your system setting. Works offline; data stays on the device unless you back it up.
 
 ## Screenshots
@@ -84,12 +84,22 @@ The files are not code-signed, so Windows SmartScreen shows a warning the first 
 
 ## Backups
 
-### JSON file (no account needed)
+### Excel, Google Sheets or JSON file (no account needed)
 
-In the **Account** tab:
+In the **Account** tab, under **Backup file**:
 
-- **Export JSON** saves every habit with its settings and full history. On the web it downloads `habit-pixel-YYYY-MM-DD.json`; on Android it opens the share sheet, so you can save the file to Drive or Files, or email it.
-- **Import JSON** shows what's in the file before changing anything, then lets you choose:
+- **Export → Excel (.xlsx)** saves every habit with its settings and full history as a spreadsheet you can open in Excel, LibreOffice or Google Sheets (upload it to Drive). It has three tabs:
+  - **Habits**: one row per habit (ID, Name, Icon, Colour, How often, Kind, Max value, Unit, Shape, Target, Created).
+  - **Entries**: one row per logged entry (Habit ID, Habit, Period start, Entry #, Value).
+  - **How to edit**: notes for editing by hand.
+- **Export → JSON** saves the same data as an exact backup file.
+- On the web and desktop both download `habit-pixel-YYYY-MM-DD.xlsx` / `.json`; on Android they open the share sheet, so you can save the file to Drive or Files, or email it.
+- **Import → Excel or JSON file** reads either format (also `.xls` and `.ods`).
+- **Import → Google Sheets link** reads a Google Sheet with the same Habits and Entries tabs. Share it as *Anyone with the link: Viewer* (or *File → Share → Publish to web*) and paste the link. The app only reads the sheet.
+
+You can edit the spreadsheet before importing it again: add rows to **Entries** to backfill history (any date inside the week or month works, preferably written as `YYYY-MM-DD`; `DD.MM.YYYY` and real date cells work too), delete rows to remove entries, or add a habit row with an empty **ID** to create a new habit. Rows that can't be read are skipped and counted.
+
+Every import shows what it found before changing anything, then lets you choose:
   - **Merge with mine:** keeps your habits, adds new ones, and combines the history of habits found in both (matched by id; the file's settings win).
   - **Replace all mine:** swaps your habits for the file's.
 
@@ -132,12 +142,13 @@ Optional: to ship a build that is already connected, put `EXPO_PUBLIC_SUPABASE_U
 | `src/dates.ts` | Period keys: day, Monday of the week, 1st of the month |
 | `src/stats.ts` | Intensity, streaks, totals |
 | `src/summary.ts` | Efficiency calculation |
-| `src/backup.ts` | JSON export/import, validation, merge |
+| `src/backup.ts` | Export/import (JSON and Excel), validation, merge |
+| `src/spreadsheet.ts` | Excel workbook layout, spreadsheet import, Google Sheets links |
 | `src/cloud.ts` | Supabase client, login session, cloud save/restore |
 | `supabase/schema.sql` | Database table and access rules for cloud backups |
 | `desktop/` | Electron shell (`app/main.js`), build script and installer config |
 
-**Tech:** Expo SDK 58 · React Native 0.88 · TypeScript · react-native-web · Electron · Supabase · AsyncStorage
+**Tech:** Expo SDK 58 · React Native 0.88 · TypeScript · react-native-web · Electron · Supabase · SheetJS · AsyncStorage
 
 ## License
 

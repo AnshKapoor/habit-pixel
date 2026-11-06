@@ -4,7 +4,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ConnectSheet, FaqSheet, HelpLink } from '../components/CloudSetup';
 import { Segmented } from '../components/Segmented';
-import { exportHabitsFile, mergeHabits, parseBackup, pickBackupFile, type ParsedBackup } from '../backup';
+import {
+  exportHabitsFile,
+  mergeHabits,
+  parseImport,
+  pickImportFile,
+  type ExportFormat,
+  type ParsedBackup,
+} from '../backup';
+import { fetchGoogleSheet } from '../spreadsheet';
 import { downloadHabits, uploadHabits, useCloud, useSession, type CloudConfig } from '../cloud';
 import { useStore } from '../store';
 import type { Theme } from '../theme';
@@ -69,14 +77,18 @@ export function AccountScreen({ theme }: { theme: Theme }) {
 
 function BackupFile({ theme }: { theme: Theme }) {
   const { habits, replaceHabits } = useStore();
-  const [pending, setPending] = useState<ParsedBackup | null>(null);
+  const [pending, setPending] = useState<(ParsedBackup & { source: string }) | null>(null);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetLink, setSheetLink] = useState('');
+  const [loadingSheet, setLoadingSheet] = useState(false);
 
-  const onExport = async () => {
+  const onExport = async (format: ExportFormat) => {
     setMessage(null);
     try {
-      await exportHabitsFile(habits);
-      setMessage({ text: `Exported ${habits.length} habit${habits.length === 1 ? '' : 's'}.`, error: false });
+      await exportHabitsFile(habits, format);
+      const what = format === 'xlsx' ? 'an Excel file' : 'JSON';
+      setMessage({ text: `Exported ${habits.length} habit${habits.length === 1 ? '' : 's'} as ${what}.`, error: false });
     } catch (e) {
       setMessage({ text: errorText(e), error: true });
     }
@@ -86,19 +98,40 @@ function BackupFile({ theme }: { theme: Theme }) {
     setMessage(null);
     setPending(null);
     try {
-      const text = await pickBackupFile();
-      if (text !== null) setPending(parseBackup(text));
+      const bytes = await pickImportFile();
+      if (bytes !== null) setPending({ ...parseImport(bytes), source: 'the file' });
     } catch (e) {
       setMessage({ text: errorText(e), error: true });
     }
   };
 
+  const onLoadSheet = async () => {
+    if (!sheetLink.trim() || loadingSheet) return;
+    setMessage(null);
+    setPending(null);
+    setLoadingSheet(true);
+    try {
+      const bytes = await fetchGoogleSheet(sheetLink);
+      setPending({ ...parseImport(bytes), source: 'the Google Sheet' });
+      setSheetOpen(false);
+    } catch (e) {
+      setMessage({ text: errorText(e), error: true });
+    } finally {
+      setLoadingSheet(false);
+    }
+  };
+
   const apply = (mode: 'merge' | 'replace') => {
     if (!pending) return;
-    const skipped = pending.skipped ? ` ${pending.skipped} unreadable habit(s) were skipped.` : '';
+    const skipped =
+      (pending.skipped ? ` ${pending.skipped} unreadable habit(s) were skipped.` : '') +
+      (pending.skippedEntries ? ` ${pending.skippedEntries} unreadable entry row(s) were skipped.` : '');
     if (mode === 'replace') {
       replaceHabits(pending.habits);
-      setMessage({ text: `Replaced your habits with ${pending.habits.length} from the file.${skipped}`, error: false });
+      setMessage({
+        text: `Replaced your habits with ${pending.habits.length} from ${pending.source}.${skipped}`,
+        error: false,
+      });
     } else {
       const { habits: merged, added, updated } = mergeHabits(habits, pending.habits);
       replaceHabits(merged);
@@ -111,28 +144,99 @@ function BackupFile({ theme }: { theme: Theme }) {
     <View style={[screenStyles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
       <Text style={[screenStyles.sectionTitle, { color: theme.subtext }]}>Backup file</Text>
       <Text style={{ color: theme.text, marginBottom: 12, lineHeight: 20 }}>
-        Export all {habits.length} habit{habits.length === 1 ? '' : 's'} (settings and full history) to a JSON file,
-        and import it later on any device. No account needed.
+        Export all {habits.length} habit{habits.length === 1 ? '' : 's'} (settings and full history) and import them
+        later on any device. No account needed. The Excel file opens in Excel and Google Sheets, with one tab for
+        habits and one for entries that you can view, edit and import again.
       </Text>
+
+      <Text style={[styles.label, { color: theme.subtext, marginTop: 0 }]}>Export</Text>
       <View style={styles.buttons}>
         <View style={{ flex: 1, minWidth: 150 }}>
-          <Button theme={theme} icon="download-outline" label="Export JSON" variant="outline" onPress={onExport} />
+          <Button
+            theme={theme}
+            icon="grid-outline"
+            label="Excel (.xlsx)"
+            variant="outline"
+            onPress={() => onExport('xlsx')}
+          />
         </View>
         <View style={{ flex: 1, minWidth: 150 }}>
-          <Button theme={theme} icon="push-outline" label="Import JSON" variant="outline" onPress={onImport} />
+          <Button
+            theme={theme}
+            icon="code-slash-outline"
+            label="JSON"
+            variant="outline"
+            onPress={() => onExport('json')}
+          />
         </View>
       </View>
+
+      <Text style={[styles.label, { color: theme.subtext }]}>Import</Text>
+      <View style={styles.buttons}>
+        <View style={{ flex: 1, minWidth: 150 }}>
+          <Button
+            theme={theme}
+            icon="document-attach-outline"
+            label="Excel or JSON file"
+            variant="outline"
+            onPress={onImport}
+          />
+        </View>
+        <View style={{ flex: 1, minWidth: 150 }}>
+          <Button
+            theme={theme}
+            icon="link-outline"
+            label="Google Sheets link"
+            variant="outline"
+            onPress={() => {
+              setSheetOpen((o) => !o);
+              setMessage(null);
+            }}
+          />
+        </View>
+      </View>
+
+      {sheetOpen ? (
+        <View style={[styles.importBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+          <TextInput
+            value={sheetLink}
+            onChangeText={setSheetLink}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            placeholder="https://docs.google.com/spreadsheets/d/…"
+            placeholderTextColor={theme.subtext}
+            onSubmitEditing={onLoadSheet}
+            style={[screenStyles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}
+          />
+          <Text style={[styles.hint, { color: theme.subtext }]}>
+            The sheet needs a Habits tab and an Entries tab, like an Excel export uploaded to Google Drive. In Google
+            Sheets choose Share → General access → “Anyone with the link” (Viewer), then copy the link. The app only
+            reads the sheet; it never changes it.
+          </Text>
+          <View style={{ marginTop: 10 }}>
+            <Button
+              theme={theme}
+              icon="cloud-download-outline"
+              label={loadingSheet ? 'Loading…' : 'Load sheet'}
+              onPress={onLoadSheet}
+              busy={loadingSheet}
+              disabled={!sheetLink.trim() || loadingSheet}
+            />
+          </View>
+        </View>
+      ) : null}
 
       {pending ? (
         <View style={[styles.importBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
           <Text style={{ color: theme.text, fontWeight: '700', marginBottom: 4 }}>
-            Found {pending.habits.length} habit{pending.habits.length === 1 ? '' : 's'}
+            Found {pending.habits.length} habit{pending.habits.length === 1 ? '' : 's'} in {pending.source}
             {pending.exportedAt ? ` (exported ${formatTime(pending.exportedAt)})` : ''}
           </Text>
           <Text style={{ color: theme.subtext, marginBottom: 12 }} numberOfLines={3}>
             {pending.habits.map((h) => `${h.emoji ? `${h.emoji} ` : ''}${h.name}`).join(', ') || 'No habits in this file.'}
-            {pending.skipped ? `
-${pending.skipped} unreadable habit(s) will be skipped.` : ''}
+            {pending.skipped ? `\n${pending.skipped} unreadable habit(s) will be skipped.` : ''}
+            {pending.skippedEntries ? `\n${pending.skippedEntries} unreadable entry row(s) will be skipped.` : ''}
           </Text>
           <View style={styles.buttons}>
             <View style={{ flex: 1, minWidth: 150 }}>
@@ -143,8 +247,8 @@ ${pending.skipped} unreadable habit(s) will be skipped.` : ''}
             </View>
           </View>
           <Text style={[styles.hint, { color: theme.subtext }]}>
-            Merge keeps your current habits, adds new ones from the file and combines the history of habits that exist
-            in both. Replace removes the {habits.length} habit{habits.length === 1 ? '' : 's'} on this device first.
+            Merge keeps your current habits, adds new ones from {pending.source} and combines the history of habits
+            that exist in both. Replace removes the {habits.length} habit{habits.length === 1 ? '' : 's'} on this device first.
           </Text>
           <Pressable onPress={() => setPending(null)} style={{ alignSelf: 'flex-end', marginTop: 8 }}>
             <Text style={{ color: theme.subtext, fontWeight: '600' }}>Cancel</Text>
