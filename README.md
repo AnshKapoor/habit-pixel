@@ -128,6 +128,43 @@ You can then create an account in the **Account** tab and use **Save to cloud** 
 
 Optional: to ship a build that is already connected, put `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` in `.env` (see `.env.example`) or in [EAS environment variables](https://docs.expo.dev/eas/environment-variables/). A project entered in the app takes priority.
 
+## Roadmap
+
+These are ideas for future versions, not commitments. They're grouped into rough sprints, quick wins first, and the order may change.
+
+### Sprint 1: Daily-use basics (v1.3)
+
+- [ ] **Smart reminders.** A notification per habit at a chosen time (`expo-notifications`). It is skipped when the habit is already logged for the period, and a nudge is sent when a target is at risk (e.g. *"1 more run to hit 3 this week"*).
+- [ ] **Haptic feedback.** A light tap when you log an entry and a stronger one when you hit a target or extend a streak (`expo-haptics`).
+- [ ] **Streak freezes and rest days.** Planned rest days, or a limited number of freezes, keep a streak alive, so one missed day doesn't wipe out months of progress.
+
+### Sprint 2: Navigation and deep links (v1.4)
+
+- [ ] **Move to Expo Router.** Replace the hand-made tab switching in `App.tsx` with file-based routes in `src/app/`.
+- [ ] **Deep links.** URLs such as `habitpixel://log/<habit>` open a habit or log it directly. Reminders, widgets and shortcuts use them.
+- [ ] **Quick actions.** Long-press the app icon for shortcuts like *Log Meditation*.
+
+### Sprint 3: Home screen (v1.5)
+
+- [ ] **Home-screen widget.** A small pixel grid for one or more habits, with one-tap logging from the home screen.
+
+### Sprint 4: Insights and AI (v1.6)
+
+- [ ] **Weekly insights.** A short summary worked out on the device from your history, e.g. *"You hit your workout target 3 weeks in a row; Sundays are your weakest day."* An LLM could optionally phrase it, but only if you turn that on.
+- [ ] **Logging in plain language or by voice.** *"Ran 5 km and read 20 pages"* logs both habits.
+- [ ] **Habit coaching.** When a target keeps being missed, the app suggests a smaller one (e.g. *2×/week instead of 4*), because shrinking a habit keeps people going better than streak pressure.
+
+### Sprint 5: Sharing and motivation (v1.7)
+
+- [ ] **Year-in-pixels image.** Export a habit's heatmap as a styled image and share it (`expo-sharing`).
+- [ ] **Habit stacking.** Link habits into a routine (*after coffee → journal*) and show them together, in the order you do them.
+
+### Sprint 6: Data and sync (v2.0)
+
+- [ ] **A real local database.** Move from a single AsyncStorage entry to one portable file: either SQLite with JSON columns (`expo-sqlite`, optionally with TinyBase on top) or a plain JSON file via `expo-file-system`. Saves are atomic (write a temp file, then rename), with IndexedDB on the web.
+- [ ] **Two-way cloud sync.** Turn the one-way Supabase backup into live sync, so the phone and the Windows app share the same habits.
+- [ ] **Over-the-air updates.** Ship fixes with `eas update` without reinstalling the APK.
+
 ## Project structure
 
 | Path | Purpose |
