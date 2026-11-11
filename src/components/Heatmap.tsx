@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
 import { addDays, addMonths, fromKey, MONTHS, startOfDay, startOfMonth, startOfWeek, toKey } from '../dates';
-import { excusal, periodStrength } from '../stats';
+import { excusal, firstPeriod, periodStrength } from '../stats';
 import type { Theme } from '../theme';
 import type { Habit } from '../types';
 import { Tile } from './Tile';
@@ -53,6 +53,7 @@ function monthLabelColumns(weeks: Date[]): number[] {
 function DailyGrid({ habit, theme, onTilePress }: Props) {
   const today = startOfDay(new Date());
   const todayKey = toKey(today);
+  const firstKey = toKey(firstPeriod(habit));
   const firstMonday = addDays(startOfWeek(today), -7 * (DAILY_WEEKS - 1));
   const weeks = Array.from({ length: DAILY_WEEKS }, (_, w) => addDays(firstMonday, 7 * w));
 
@@ -96,7 +97,8 @@ function DailyGrid({ habit, theme, onTilePress }: Props) {
                         shape={habit.shape}
                         color={habit.color}
                         strength={periodStrength(habit, key)}
-                        excused={excusal(habit, key)}
+                        excused={key < firstKey ? null : excusal(habit, key)}
+                        unavailable={key < firstKey}
                         theme={theme}
                         current={key === todayKey}
                         onPress={() => onTilePress(key)}
@@ -135,6 +137,7 @@ function weeksStartingIn(monthStart: Date): Date[] {
 function WeeklyGrid({ habit, theme, onTilePress }: Props) {
   const today = new Date();
   const currentKey = toKey(startOfWeek(today));
+  const firstKey = toKey(firstPeriod(habit));
   const thisMonth = startOfMonth(today);
   const months = Array.from({ length: WEEKLY_MONTHS }, (_, i) => addMonths(thisMonth, i - (WEEKLY_MONTHS - 1)));
 
@@ -156,7 +159,8 @@ function WeeklyGrid({ habit, theme, onTilePress }: Props) {
                     shape={habit.shape}
                     color={habit.color}
                     strength={periodStrength(habit, key)}
-                    excused={excusal(habit, key)}
+                    excused={key < firstKey ? null : excusal(habit, key)}
+                    unavailable={key < firstKey}
                     theme={theme}
                     current={key === currentKey}
                     future={monday > today}
@@ -182,6 +186,7 @@ function MonthlyGrid({ habit, theme, onTilePress }: Props) {
   const today = new Date();
   const thisYear = today.getFullYear();
   const currentKey = toKey(startOfMonth(today));
+  const firstKey = toKey(firstPeriod(habit));
   const entryYears = Object.keys(habit.entries).map((k) => fromKey(k).getFullYear());
   const firstYear = Math.min(thisYear - 1, fromKey(habit.createdAt).getFullYear(), ...entryYears);
   const years = Array.from({ length: thisYear - firstYear + 1 }, (_, i) => firstYear + i);
@@ -208,7 +213,8 @@ function MonthlyGrid({ habit, theme, onTilePress }: Props) {
                   shape={habit.shape}
                   color={habit.color}
                   strength={periodStrength(habit, key)}
-                  excused={excusal(habit, key)}
+                  excused={key < firstKey ? null : excusal(habit, key)}
+                  unavailable={key < firstKey}
                   theme={theme}
                   current={key === currentKey}
                   future={start > today}

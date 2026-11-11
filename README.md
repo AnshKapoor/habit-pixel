@@ -15,6 +15,7 @@
 - **Yes/no or intensity.** Every time you do a habit you log an entry. Intensity habits record a value with each entry, up to a maximum you choose (e.g. 10, or 8 km), and the tile fades with how much you did: 3/10 is faint, 10/10 is full colour.
 - **Your style.** Square, circle or star tiles, 8 colours, an emoji icon and an optional unit.
 - **Entry list per period.** The round button on each card (today, this week or this month) and every tile in the grid open that period's numbered entries, where you add or remove single entries, or set it back to 0.
+- **Go to any date.** The calendar button on each habit opens a calendar of that habit (a year of months for monthly habits) to log or edit any past date. Only dates the habit existed on can be picked: from its start date (or its earliest imported entry) up to today. Earlier tiles in the grid are faded and can't be tapped. To fill in older history, move the habit's **Started on** date earlier in the editor.
 - **Streaks.** Current and best streak of periods that reached the target, plus total entries, for every habit.
 - **Rest days and streak freezes.** Mark planned rest days for a daily habit (e.g. Sat, Sun), or use one of 2 streak freezes a month (a year for monthly habits) on a missed period. Either one keeps your streak alive without adding to it, and Summary leaves those periods out. Rest days show as outlined tiles, freezes in ice blue.
 - **Smart reminders (Android).** A notification per habit at the time you choose, skipped once the habit is done (and on rest days or frozen periods). Weekly and monthly habits get one at the start of the period, then daily nudges when the target is at risk, e.g. *"2 more to hit 3 this week · 2 days left"*.
@@ -39,7 +40,7 @@ Habits are judged per **period**: a day, week or month, depending on the habit.
 
 - **Targets hit** = periods with at least *target* entries ÷ periods counted. Habits without a target (0) are left out of it; for them a period is done once anything is logged.
 - **Efficiency** also gives credit for partial progress. Each period scores `min(entries ÷ target, 1)`, multiplied for intensity habits by the average `value ÷ max` of its entries. Periods with nothing logged score **0**; efficiency is the average score.
-- Counting starts when the habit was created, or at its earliest logged entry if you backfilled.
+- Counting starts on the habit's **Started on** date (the day you added it, unless you moved it earlier), or at its earliest logged entry if you imported older history.
 - Rest days and frozen periods that missed the target aren't counted at all, so they don't lower your score. If you log on one anyway, it counts like any other period.
 - The current day, week or month only counts once its target is reached, so an unfinished week doesn't lower your score.
 - **Overall** numbers are averages across habits, so every habit counts equally whatever its frequency.
@@ -178,6 +179,7 @@ These are ideas for future versions, not commitments. They're grouped into rough
 | `src/components/Heatmap.tsx` | Daily, weekly and monthly grids |
 | `src/components/HabitCard.tsx` | A habit card with stats and its grid |
 | `src/components/HabitEditor.tsx` | Add/edit habit form |
+| `src/components/DatePickerSheet.tsx` | Per-habit calendar to go to any date the habit existed on |
 | `src/components/EntriesSheet.tsx` | Entries of one period: add, remove, set to 0 |
 | `src/store.tsx` | Habit state, saved with AsyncStorage (localStorage on web) |
 | `src/dates.ts` | Period keys: day, Monday of the week, 1st of the month |

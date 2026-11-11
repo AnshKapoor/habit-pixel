@@ -77,7 +77,7 @@ export function freezesLeft(habit: Habit, key: string): number {
 /** A freeze can cover a missed, non-rest period up to the current one, while the allowance lasts. */
 export function canFreeze(habit: Habit, key: string, today = new Date()): boolean {
   if (isFrozen(habit, key) || targetMet(habit, key) || isRestDay(habit, key)) return false;
-  if (key > toKey(periodStart(today, habit.frequency))) return false;
+  if (!isAvailable(habit, key, today)) return false;
   return freezesLeft(habit, key) > 0;
 }
 
@@ -89,6 +89,14 @@ export function firstPeriod(habit: Habit): Date {
     if (d < first) first = d;
   }
   return periodStart(first, habit.frequency);
+}
+
+/**
+ * Whether the habit existed in the period starting at `key`: from its first period (the day it was created,
+ * or earlier history that was back-filled by an import) up to the current one. Other periods can't be logged.
+ */
+export function isAvailable(habit: Habit, key: string, today = new Date()): boolean {
+  return key >= toKey(firstPeriod(habit)) && key <= toKey(periodStart(today, habit.frequency));
 }
 
 /**

@@ -29,6 +29,10 @@ export interface Habit {
   restDays: number[];
   /** Daily reminder time as "HH:MM" (24 h, local time), or null for no reminder. Android/iOS only. */
   reminder: string | null;
+  /**
+   * The day the habit starts (YYYY-MM-DD): the day it was added, or an earlier day set in the editor to log
+   * older history. Dates before it (and before any imported entry) can't be logged.
+   */
   createdAt: string;
   /**
    * Entries keyed by the start date of the period (YYYY-MM-DD): the day itself, the Monday of the week,
@@ -42,4 +46,4 @@ export interface Habit {
   freezes: string[];
 }
 
-export type HabitDraft = Omit<Habit, 'id' | 'createdAt' | 'entries' | 'freezes'>;
+export type HabitDraft = Omit<Habit, 'id' | 'entries' | 'freezes'>;

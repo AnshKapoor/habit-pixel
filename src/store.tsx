@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { fromKey, toKey, weekdayIndex } from './dates';
+import { fromKey, weekdayIndex } from './dates';
 import { canFreeze, isFrozen, normalizeHabit } from './stats';
 import type { Habit, HabitDraft } from './types';
 
@@ -54,7 +54,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [habits, loaded]);
 
   const addHabit = useCallback((draft: HabitDraft) => {
-    setHabits((hs) => [...hs, { ...draft, id: newId(), createdAt: toKey(new Date()), entries: {}, freezes: [] }]);
+    setHabits((hs) => [...hs, { ...draft, id: newId(), entries: {}, freezes: [] }]);
   }, []);
 
   const updateHabit = useCallback((id: string, draft: HabitDraft) => {

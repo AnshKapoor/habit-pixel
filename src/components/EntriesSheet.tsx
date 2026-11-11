@@ -1,8 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { formatPeriod, periodNoun } from '../dates';
-import { canFreeze, FREEZE_LIMIT, freezesLeft, hasTarget, isFrozen, isRestDay, periodEntries, valueStrength } from '../stats';
+import { formatPeriod, periodNoun, toKey } from '../dates';
+import { canFreeze, firstPeriod, FREEZE_LIMIT, isAvailable, freezesLeft, hasTarget, isFrozen, isRestDay, periodEntries, valueStrength } from '../stats';
 import { tileColor, type Theme } from '../theme';
 import type { Habit } from '../types';
 import { Sheet } from './Sheet';
@@ -38,6 +38,34 @@ export function EntriesSheet({ habit, periodKey, theme, onAdd, onSet, onRemove, 
   }
 
   if (!habit || !periodKey) return null;
+
+  // Only periods the habit existed in can be logged (from its creation, or earlier imported history, to today).
+  if (!isAvailable(habit, periodKey)) {
+    const future = periodKey > toKey(new Date());
+    return (
+      <Sheet visible onClose={onClose} theme={theme}>
+        <Text style={[styles.title, { color: theme.text }]}>
+          {habit.emoji ? `${habit.emoji} ` : ''}
+          {habit.name}
+        </Text>
+        <Text style={{ color: theme.subtext }}>{formatPeriod(periodKey, habit.frequency)}</Text>
+        <View style={[styles.excuse, { borderColor: theme.danger }]}>
+          <Ionicons name="information-circle-outline" size={18} color={theme.danger} />
+          <Text style={{ color: theme.text, flex: 1 }}>
+            {future
+              ? 'This is in the future. You can only log up to today.'
+              : `${habit.name} didn’t exist yet then. Its history starts ${formatPeriod(toKey(firstPeriod(habit)), habit.frequency)}.`}
+          </Text>
+        </View>
+        <View style={styles.footer}>
+          <View />
+          <Pressable onPress={onClose} hitSlop={8}>
+            <Text style={{ color: theme.subtext, fontWeight: '600' }}>Close</Text>
+          </Pressable>
+        </View>
+      </Sheet>
+    );
+  }
   const entries = periodEntries(habit, periodKey);
   const count = entries.length;
   const withTarget = hasTarget(habit);

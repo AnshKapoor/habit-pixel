@@ -13,12 +13,14 @@ interface Props {
   theme: Theme;
   current?: boolean;
   future?: boolean;
+  /** Before the habit existed: faded and can't be tapped. */
+  unavailable?: boolean;
   /** A missed period that keeps the streak: a planned rest day (faded) or a streak freeze (ice blue). */
   excused?: 'rest' | 'freeze' | null;
   onPress?: () => void;
 }
 
-function TileImpl({ size, shape, color, strength, theme, current, future, excused, onPress }: Props) {
+function TileImpl({ size, shape, color, strength, theme, current, future, unavailable, excused, onPress }: Props) {
   const fill = future
     ? 'transparent'
     : excused === 'freeze'
@@ -66,6 +68,7 @@ function TileImpl({ size, shape, color, strength, theme, current, future, excuse
       </View>
     );
 
+  if (unavailable) return <View style={{ opacity: 0.35 }}>{body}</View>;
   if (!onPress || future) return body;
   return (
     <Pressable onPress={onPress} hitSlop={2} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>

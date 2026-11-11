@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { periodNoun, WEEKDAYS } from '../dates';
+import { formatPeriod, fromKey, periodNoun, toKey, WEEKDAYS } from '../dates';
 import { ensureNotificationPermission, remindersSupported } from '../reminders';
 import { TIME_RE } from '../stats';
 import { HABIT_COLORS, type Theme } from '../theme';
@@ -23,7 +23,19 @@ const EMPTY: HabitDraft = {
   target: 0,
   restDays: [],
   reminder: null,
+  createdAt: '', // set to today when the form opens
 };
+
+/** Earliest start date the editor accepts, so a typo can't send a habit back centuries. */
+const MIN_START_YEAR = 2000;
+
+/** "D", "M", "YYYY" field texts → "YYYY-MM-DD", or null if that isn't a real date. */
+function startKey(day: string, month: string, year: string): string | null {
+  if (!day || !month || year.length !== 4) return null;
+  const d = new Date(Number(year), Number(month) - 1, Number(day));
+  if (d.getFullYear() !== Number(year) || d.getMonth() !== Number(month) - 1 || d.getDate() !== Number(day)) return null;
+  return toKey(d);
+}
 
 const DEFAULT_REMINDER = '20:00';
 const REMINDER_STEP = 15; // minutes
@@ -52,38 +64,109 @@ export function HabitEditor({ visible, habit, theme, onSave, onDelete, onClose }
   const [draft, setDraft] = useState<HabitDraft>(EMPTY);
   const [maxText, setMaxText] = useState('10');
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [timeText, setTimeText] = useState(DEFAULT_REMINDER);
+  // The reminder time is edited as two number-only fields with a fixed ":" between them.
+  const [hourText, setHourText] = useState('20');
+  const [minuteText, setMinuteText] = useState('00');
   const [permissionDenied, setPermissionDenied] = useState(false);
+  // "Started on" date, edited as day / month / year number fields.
+  const [startDay, setStartDay] = useState('');
+  const [startMonth, setStartMonth] = useState('');
+  const [startYear, setStartYear] = useState('');
 
   // Reset the form each time the sheet opens (adjusting state during render, not in an effect).
   const [openedFor, setOpenedFor] = useState<{ visible: boolean; habit: Habit | null }>({ visible: false, habit: null });
   if (openedFor.visible !== visible || openedFor.habit !== habit) {
     setOpenedFor({ visible, habit });
     if (visible) {
-      const d: HabitDraft = habit ? { ...habit } : EMPTY;
+      const d: HabitDraft = habit ? { ...habit } : { ...EMPTY, createdAt: toKey(new Date()) };
       setDraft(d);
+      showStart(d.createdAt);
       setMaxText(String(d.maxValue));
       setConfirmDelete(false);
-      setTimeText(d.reminder ?? DEFAULT_REMINDER);
+      const [h, m] = (d.reminder ?? DEFAULT_REMINDER).split(':');
+      setHourText(h);
+      setMinuteText(m);
       setPermissionDenied(false);
     }
+  }
+
+  function showStart(key: string) {
+    const d = fromKey(key);
+    setStartDay(String(d.getDate()));
+    setStartMonth(String(d.getMonth() + 1));
+    setStartYear(String(d.getFullYear()));
   }
 
   const set = <K extends keyof HabitDraft>(k: K, v: HabitDraft[K]) => setDraft((d) => ({ ...d, [k]: v }));
 
   const maxValue = Math.round(Number(maxText));
   const maxValid = draft.kind === 'boolean' || (Number.isFinite(maxValue) && maxValue >= 1 && maxValue <= 1000);
-  const canSave = draft.name.trim().length > 0 && maxValid;
   const hasHistory = habit && Object.keys(habit.entries).length > 0;
 
-  const setReminder = (time: string | null) => {
-    set('reminder', time);
-    if (time) setTimeText(time);
+  // The start can move earlier freely, but not past the first logged entry (that history would sit before it)
+  // unless the frequency changes, which clears the history anyway.
+  const todayKey = toKey(new Date());
+  const firstEntry =
+    habit && draft.frequency === habit.frequency ? (Object.keys(habit.entries).sort()[0] ?? null) : null;
+  const typedStart = startKey(startDay, startMonth, startYear);
+  const startError =
+    typedStart === null
+      ? 'Enter a real date (day, month, year).'
+      : typedStart > todayKey
+        ? 'The start can’t be in the future.'
+        : Number(startYear) < MIN_START_YEAR
+          ? `Pick a date from ${MIN_START_YEAR} on.`
+          : firstEntry && typedStart > firstEntry
+            ? `It can’t be after the first logged entry (${formatPeriod(firstEntry, 'daily')}).`
+            : null;
+
+  /** Keep digits only; save the start date as soon as the three fields make a valid one. */
+  const editStart = (text: string, part: 'day' | 'month' | 'year') => {
+    const digits = text.replace(/\D/g, '').slice(0, part === 'year' ? 4 : 2);
+    const day = part === 'day' ? digits : startDay;
+    const month = part === 'month' ? digits : startMonth;
+    const year = part === 'year' ? digits : startYear;
+    if (part === 'day') setStartDay(digits);
+    else if (part === 'month') setStartMonth(digits);
+    else setStartYear(digits);
+    const key = startKey(day, month, year);
+    if (key) set('createdAt', key);
+  };
+
+  const canSave = draft.name.trim().length > 0 && maxValid && startError === null;
+
+  // The last valid time, also kept while the reminder is off so turning it back on restores it.
+  const time = draft.reminder ?? `${hourText.padStart(2, '0')}:${minuteText.padStart(2, '0')}`;
+  const validTime = TIME_RE.test(time) ? time : DEFAULT_REMINDER;
+  const [hour, minute] = validTime.split(':');
+
+  const showTime = (t: string) => {
+    const [h, m] = t.split(':');
+    setHourText(h);
+    setMinuteText(m);
+  };
+
+  const setReminder = (t: string | null) => {
+    set('reminder', t);
+    if (t) showTime(t);
+  };
+
+  /** Keep digits only, at most 2, capped at `max`; save the time as soon as the field holds a number. */
+  const editTimePart = (text: string, part: 'hour' | 'minute') => {
+    let digits = text.replace(/\D/g, '').slice(0, 2);
+    const max = part === 'hour' ? 23 : 59;
+    if (digits && Number(digits) > max) digits = String(max);
+    if (part === 'hour') setHourText(digits);
+    else setMinuteText(digits);
+    if (!digits) return; // emptied while typing: keep the last time until a number is entered or the field is left
+    const h = part === 'hour' ? digits : hour;
+    const m = part === 'minute' ? digits : minute;
+    set('reminder', `${h.padStart(2, '0')}:${m.padStart(2, '0')}`);
   };
 
   const toggleReminder = async (on: boolean) => {
-    if (!on) return setReminder(null);
-    setReminder(draft.reminder ?? timeText);
+    if (!on) return set('reminder', null);
+    setReminder(validTime);
     if (remindersSupported) setPermissionDenied(!(await ensureNotificationPermission()));
   };
 
@@ -139,6 +222,65 @@ export function HabitEditor({ visible, habit, theme, onSave, onDelete, onClose }
             Changing the frequency will clear this habit’s history.
           </Text>
         )}
+
+        {label('Started on')}
+        <View style={styles.targetRow}>
+          <View style={[styles.stepper, styles.dateFields, { borderColor: startError ? theme.danger : theme.border }]}>
+            <TextInput
+              value={startDay}
+              onChangeText={(t) => editStart(t, 'day')}
+              keyboardType="number-pad"
+              selectTextOnFocus
+              maxLength={2}
+              placeholder="DD"
+              placeholderTextColor={theme.subtext}
+              accessibilityLabel="Start day"
+              style={[styles.timePart, { color: theme.text }]}
+            />
+            <Text style={[styles.timeColon, { color: theme.subtext }]}>.</Text>
+            <TextInput
+              value={startMonth}
+              onChangeText={(t) => editStart(t, 'month')}
+              keyboardType="number-pad"
+              selectTextOnFocus
+              maxLength={2}
+              placeholder="MM"
+              placeholderTextColor={theme.subtext}
+              accessibilityLabel="Start month"
+              style={[styles.timePart, { color: theme.text }]}
+            />
+            <Text style={[styles.timeColon, { color: theme.subtext }]}>.</Text>
+            <TextInput
+              value={startYear}
+              onChangeText={(t) => editStart(t, 'year')}
+              keyboardType="number-pad"
+              selectTextOnFocus
+              maxLength={4}
+              placeholder="YYYY"
+              placeholderTextColor={theme.subtext}
+              accessibilityLabel="Start year"
+              style={[styles.timePart, { width: 50, color: theme.text }]}
+            />
+          </View>
+          <Text style={{ color: theme.text, fontSize: 15 }}>
+            {typedStart && !startError ? formatPeriod(typedStart, 'daily') : ''}
+          </Text>
+          {draft.createdAt !== todayKey || startError ? (
+            <Pressable
+              onPress={() => {
+                set('createdAt', todayKey);
+                showStart(todayKey);
+              }}
+              hitSlop={6}
+            >
+              <Text style={{ color: draft.color, fontWeight: '700' }}>Today</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        <Text style={[styles.small, { color: startError ? theme.danger : theme.subtext, marginTop: 6 }]}>
+          {startError ??
+            'You can log from this day on. Move it earlier to fill in history from before you added the habit.'}
+        </Text>
 
         {label('Target (optional)')}
         <View style={styles.targetRow}>
@@ -227,30 +369,38 @@ export function HabitEditor({ visible, habit, theme, onSave, onDelete, onClose }
           {draft.reminder !== null ? (
             <View style={[styles.stepper, { borderColor: theme.border }]}>
               <Pressable
-                onPress={() => setReminder(shiftTime(draft.reminder ?? timeText, -REMINDER_STEP))}
+                onPress={() => setReminder(shiftTime(validTime, -REMINDER_STEP))}
                 hitSlop={6}
                 accessibilityLabel="Earlier"
                 style={styles.stepBtn}
               >
                 <Ionicons name="remove" size={20} color={theme.text} />
               </Pressable>
-              <TextInput
-                value={timeText}
-                onChangeText={(t) => {
-                  setTimeText(t);
-                  const m = t.trim().match(/^(\d{1,2})[:.](\d{2})$/);
-                  const time = m ? `${m[1].padStart(2, '0')}:${m[2]}` : '';
-                  if (TIME_RE.test(time)) set('reminder', time);
-                }}
-                onBlur={() => setTimeText(draft.reminder ?? DEFAULT_REMINDER)}
-                keyboardType="numbers-and-punctuation"
-                selectTextOnFocus
-                maxLength={5}
-                accessibilityLabel="Reminder time"
-                style={[styles.stepValue, { width: 64, color: theme.text }]}
-              />
+              <View style={styles.timeFields}>
+                <TextInput
+                  value={hourText}
+                  onChangeText={(t) => editTimePart(t, 'hour')}
+                  onBlur={() => showTime(validTime)}
+                  keyboardType="number-pad"
+                  selectTextOnFocus
+                  maxLength={2}
+                  accessibilityLabel="Reminder hour"
+                  style={[styles.timePart, { color: theme.text }]}
+                />
+                <Text style={[styles.timeColon, { color: theme.text }]}>:</Text>
+                <TextInput
+                  value={minuteText}
+                  onChangeText={(t) => editTimePart(t, 'minute')}
+                  onBlur={() => showTime(validTime)}
+                  keyboardType="number-pad"
+                  selectTextOnFocus
+                  maxLength={2}
+                  accessibilityLabel="Reminder minute"
+                  style={[styles.timePart, { color: theme.text }]}
+                />
+              </View>
               <Pressable
-                onPress={() => setReminder(shiftTime(draft.reminder ?? timeText, REMINDER_STEP))}
+                onPress={() => setReminder(shiftTime(validTime, REMINDER_STEP))}
                 hitSlop={6}
                 accessibilityLabel="Later"
                 style={styles.stepBtn}
@@ -376,6 +526,10 @@ const styles = StyleSheet.create({
   stepper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10 },
   stepBtn: { paddingHorizontal: 10, paddingVertical: 8 },
   stepValue: { width: 40, textAlign: 'center', fontSize: 16, fontWeight: '700', paddingVertical: 6 },
+  dateFields: { paddingHorizontal: 6 },
+  timeFields: { flexDirection: 'row', alignItems: 'center' },
+  timePart: { width: 30, textAlign: 'center', fontSize: 16, fontWeight: '700', paddingVertical: 6 },
+  timeColon: { fontSize: 16, fontWeight: '700', paddingBottom: 2 },
   dayChip: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 11, paddingVertical: 6 },
   swatch: { width: 32, height: 32, borderRadius: 16, borderWidth: 3 },
   primary: { marginTop: 24, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },

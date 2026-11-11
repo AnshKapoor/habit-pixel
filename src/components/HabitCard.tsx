@@ -14,11 +14,13 @@ interface Props {
   onEdit: () => void;
   /** Tap on a tile or the round button: open the entries for the period starting at `key`. */
   onLog: (key: string) => void;
+  /** Calendar button: pick any date this habit existed on. */
+  onPickDate: () => void;
 }
 
 const FREQ_LABEL = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly' } as const;
 
-export function HabitCard({ habit, theme, onEdit, onLog }: Props) {
+export function HabitCard({ habit, theme, onEdit, onLog, onPickDate }: Props) {
   const nowKey = periodKey(new Date(), habit.frequency);
   const nowEntries = periodEntries(habit, nowKey);
   const count = nowEntries.length;
@@ -58,7 +60,11 @@ export function HabitCard({ habit, theme, onEdit, onLog }: Props) {
           </Text>
         </Pressable>
 
-        <Pressable onPress={onEdit} hitSlop={8} style={styles.iconBtn}>
+        <Pressable onPress={onPickDate} hitSlop={8} style={styles.iconBtn} accessibilityLabel={`Go to a date for ${habit.name}`}>
+          <Ionicons name="calendar-outline" size={18} color={theme.subtext} />
+        </Pressable>
+
+        <Pressable onPress={onEdit} hitSlop={8} style={styles.iconBtn} accessibilityLabel={`Edit ${habit.name}`}>
           <Ionicons name="ellipsis-horizontal" size={18} color={theme.subtext} />
         </Pressable>
 
@@ -117,7 +123,7 @@ const styles = StyleSheet.create({
   titleWrap: { flex: 1, marginRight: 8 },
   title: { fontSize: 17, fontWeight: '700' },
   meta: { fontSize: 12, marginTop: 2 },
-  iconBtn: { padding: 6, marginRight: 6 },
+  iconBtn: { padding: 6, marginRight: 2 },
   check: {
     width: 42,
     height: 42,

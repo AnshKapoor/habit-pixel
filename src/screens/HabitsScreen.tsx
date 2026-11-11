@@ -3,10 +3,11 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { HabitCard } from '../components/HabitCard';
 import { HabitEditor } from '../components/HabitEditor';
+import { DatePickerSheet } from '../components/DatePickerSheet';
 import { EntriesSheet } from '../components/EntriesSheet';
 import { formatPeriod, toKey } from '../dates';
 import { successHaptic, tapHaptic } from '../haptics';
-import { periodCount } from '../stats';
+import { isAvailable, periodCount } from '../stats';
 import { useStore } from '../store';
 import type { Theme } from '../theme';
 import type { Habit } from '../types';
@@ -30,10 +31,13 @@ export function HabitsScreen({ theme }: { theme: Theme }) {
   const [editing, setEditing] = useState<Habit | null | undefined>(undefined);
   const [logging, setLogging] = useState<{ id: string; key: string } | null>(null);
   const loggingHabit = logging ? (habits.find((h) => h.id === logging.id) ?? null) : null;
+  // Habit whose "go to a date" calendar is open.
+  const [pickingId, setPickingId] = useState<string | null>(null);
+  const pickingHabit = pickingId ? (habits.find((h) => h.id === pickingId) ?? null) : null;
 
   /** Log an entry with haptic feedback: a light tap, or a stronger one when it reaches the target. */
   const logEntry = (value: number, replace: boolean) => {
-    if (!logging || !loggingHabit || value <= 0) return;
+    if (!logging || !loggingHabit || value <= 0 || !isAvailable(loggingHabit, logging.key)) return;
     const before = periodCount(loggingHabit, logging.key);
     const after = replace ? 1 : before + 1;
     const goal = Math.max(1, loggingHabit.target);
@@ -69,6 +73,7 @@ export function HabitsScreen({ theme }: { theme: Theme }) {
               theme={theme}
               onEdit={() => setEditing(h)}
               onLog={(key) => setLogging({ id: h.id, key })}
+              onPickDate={() => setPickingId(h.id)}
             />
           ))
         )}
@@ -95,6 +100,17 @@ export function HabitsScreen({ theme }: { theme: Theme }) {
         onDelete={() => {
           if (editing) deleteHabit(editing.id);
           setEditing(undefined);
+        }}
+      />
+
+      <DatePickerSheet
+        habit={pickingHabit}
+        theme={theme}
+        onClose={() => setPickingId(null)}
+        onPick={(key) => {
+          if (!pickingId) return;
+          setPickingId(null);
+          setLogging({ id: pickingId, key });
         }}
       />
 
