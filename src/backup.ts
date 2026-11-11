@@ -9,7 +9,10 @@ import { HABIT_COLORS } from './theme';
 import type { Frequency, Habit, HabitKind, TileShape } from './types';
 
 const FORMAT = 'habit-pixel';
-/** 2: entries hold a list of values per period and habits have an optional target. Version 1 files still import. */
+/**
+ * 2: entries hold a list of values per period and habits have an optional target (plus, since v1.3, optional
+ * rest days, reminder and freezes). Version 1 files still import.
+ */
 const VERSION = 2;
 
 export type ExportFormat = 'json' | 'xlsx';
@@ -137,6 +140,10 @@ function readHabit(raw: unknown, index: number): Habit | null {
     unit: kind === 'value' && typeof raw.unit === 'string' ? raw.unit : '',
     shape: SHAPES.includes(raw.shape as TileShape) ? (raw.shape as TileShape) : 'square',
     target: typeof raw.target === 'number' ? raw.target : 0,
+    // Checked by normalizeHabit: weekdays 0–6 (daily habits only), "HH:MM", and period keys.
+    restDays: (Array.isArray(raw.restDays) ? raw.restDays : []) as number[],
+    reminder: typeof raw.reminder === 'string' ? raw.reminder : null,
+    freezes: (Array.isArray(raw.freezes) ? raw.freezes : []) as string[],
     createdAt: typeof raw.createdAt === 'string' && KEY_RE.test(raw.createdAt) ? raw.createdAt : toKey(new Date()),
     entries: entries as Habit['entries'],
   });
@@ -179,8 +186,10 @@ export function mergeHabits(current: Habit[], imported: Habit[]): { habits: Habi
     byId.delete(h.id);
     updated++;
     // Entries are only comparable when the frequency matches; otherwise the file's version replaces it.
-    const entries = inc.frequency === h.frequency ? { ...h.entries, ...inc.entries } : inc.entries;
-    return normalizeHabit({ ...inc, entries, createdAt: h.createdAt < inc.createdAt ? h.createdAt : inc.createdAt });
+    const same = inc.frequency === h.frequency;
+    const entries = same ? { ...h.entries, ...inc.entries } : inc.entries;
+    const freezes = same ? [...h.freezes, ...inc.freezes] : inc.freezes;
+    return normalizeHabit({ ...inc, entries, freezes, createdAt: h.createdAt < inc.createdAt ? h.createdAt : inc.createdAt });
   });
   const added = [...byId.values()];
   return { habits: [...habits, ...added], added: added.length, updated };

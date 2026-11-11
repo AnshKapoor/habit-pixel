@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { formatPeriod, periodNoun } from '../dates';
-import { hasTarget, periodEntries, valueStrength } from '../stats';
+import { canFreeze, FREEZE_LIMIT, freezesLeft, hasTarget, isFrozen, isRestDay, periodEntries, valueStrength } from '../stats';
 import { tileColor, type Theme } from '../theme';
 import type { Habit } from '../types';
 import { Sheet } from './Sheet';
@@ -18,6 +18,8 @@ interface Props {
   onSet: (value: number) => void;
   onRemove: (index: number) => void;
   onClear: () => void;
+  /** Use a streak freeze on this period, or give it back. */
+  onToggleFreeze: () => void;
   onClose: () => void;
 }
 
@@ -25,7 +27,7 @@ interface Props {
  * One day / week / month of a habit. With a target, a numbered list of entries you add or remove one by one.
  * Without a target there is only one entry per period: done / not done, or a single value for intensity habits.
  */
-export function EntriesSheet({ habit, periodKey, theme, onAdd, onSet, onRemove, onClear, onClose }: Props) {
+export function EntriesSheet({ habit, periodKey, theme, onAdd, onSet, onRemove, onClear, onToggleFreeze, onClose }: Props) {
   const [text, setText] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const [shownFor, setShownFor] = useState<string | null>(null);
@@ -50,6 +52,10 @@ export function EntriesSheet({ habit, periodKey, theme, onAdd, onSet, onRemove, 
   const showList = !single || count > 1;
   const current = single && count === 1 ? entries[0] : null;
   const log = (v: number) => (single ? onSet(v) : onAdd(v));
+  const frozen = isFrozen(habit, periodKey);
+  const rest = isRestDay(habit, periodKey);
+  const left = freezesLeft(habit, periodKey);
+  const allowance = habit.frequency === 'monthly' ? 'this year' : 'this month';
 
   const submitText = () => {
     const n = Number(text.replace(',', '.'));
@@ -228,6 +234,47 @@ export function EntriesSheet({ habit, periodKey, theme, onAdd, onSet, onRemove, 
           </View>
         )}
 
+        {/* Rest day / streak freeze */}
+        {!reached && rest ? (
+          <View style={[styles.excuse, { borderColor: theme.border }]}>
+            <Ionicons name="moon-outline" size={18} color={theme.subtext} />
+            <Text style={{ color: theme.text, flex: 1 }}>Rest day. Skipping it keeps your streak.</Text>
+          </View>
+        ) : !reached && frozen ? (
+          <View style={[styles.excuse, { borderColor: theme.freeze, backgroundColor: theme.freezeBg }]}>
+            <Ionicons name="snow" size={18} color={theme.freeze} />
+            <Text style={{ color: theme.text, flex: 1 }}>Streak freeze used. This {noun} keeps your streak.</Text>
+            <Pressable onPress={onToggleFreeze} hitSlop={8}>
+              <Text style={{ color: theme.freeze, fontWeight: '700' }}>Undo</Text>
+            </Pressable>
+          </View>
+        ) : !reached ? (
+          <Pressable
+            onPress={onToggleFreeze}
+            disabled={!canFreeze(habit, periodKey)}
+            accessibilityLabel={`Use a streak freeze, ${left} of ${FREEZE_LIMIT} left ${allowance}`}
+            style={({ pressed }) => [
+              styles.excuse,
+              { borderColor: theme.freeze, opacity: !canFreeze(habit, periodKey) ? 0.45 : pressed ? 0.7 : 1 },
+            ]}
+          >
+            <Ionicons name="snow-outline" size={18} color={theme.freeze} />
+            <Text style={{ color: theme.text, flex: 1 }}>
+              {left > 0 ? 'Use a streak freeze' : `No streak freezes left ${allowance}`}
+            </Text>
+            <Text style={{ color: theme.subtext, fontSize: 12 }}>
+              {left}/{FREEZE_LIMIT} left
+            </Text>
+          </Pressable>
+        ) : frozen ? (
+          // Target reached after freezing: the freeze isn't needed any more.
+          <Pressable onPress={onToggleFreeze} style={[styles.excuse, { borderColor: theme.border }]}>
+            <Ionicons name="snow-outline" size={18} color={theme.subtext} />
+            <Text style={{ color: theme.subtext, flex: 1 }}>Target reached, so the freeze isn’t needed.</Text>
+            <Text style={{ color: theme.freeze, fontWeight: '700' }}>Give it back</Text>
+          </Pressable>
+        ) : null}
+
         <View style={styles.footer}>
           <Pressable
             onPress={clear}
@@ -299,6 +346,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginTop: 14,
+  },
+  excuse: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginTop: 18,
   },
   input: { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16 },
   button: { paddingHorizontal: 18, paddingVertical: 12, borderRadius: 10 },

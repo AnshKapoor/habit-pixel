@@ -5,20 +5,43 @@ import { HabitCard } from '../components/HabitCard';
 import { HabitEditor } from '../components/HabitEditor';
 import { EntriesSheet } from '../components/EntriesSheet';
 import { formatPeriod, toKey } from '../dates';
+import { successHaptic, tapHaptic } from '../haptics';
+import { periodCount } from '../stats';
 import { useStore } from '../store';
 import type { Theme } from '../theme';
 import type { Habit } from '../types';
 import { screenStyles } from './screenStyles';
 
 export function HabitsScreen({ theme }: { theme: Theme }) {
-  const { loaded, habits, addHabit, updateHabit, deleteHabit, addEntry, setOnlyEntry, removeEntry, clearPeriod } =
-    useStore();
+  const {
+    loaded,
+    habits,
+    addHabit,
+    updateHabit,
+    deleteHabit,
+    addEntry,
+    setOnlyEntry,
+    removeEntry,
+    clearPeriod,
+    toggleFreeze,
+  } = useStore();
 
   // `undefined` = editor closed, `null` = creating a new habit.
   const [editing, setEditing] = useState<Habit | null | undefined>(undefined);
   const [logging, setLogging] = useState<{ id: string; key: string } | null>(null);
   const loggingHabit = logging ? (habits.find((h) => h.id === logging.id) ?? null) : null;
 
+  /** Log an entry with haptic feedback: a light tap, or a stronger one when it reaches the target. */
+  const logEntry = (value: number, replace: boolean) => {
+    if (!logging || !loggingHabit || value <= 0) return;
+    const before = periodCount(loggingHabit, logging.key);
+    const after = replace ? 1 : before + 1;
+    const goal = Math.max(1, loggingHabit.target);
+    if (before < goal && after >= goal) successHaptic();
+    else tapHaptic();
+    if (replace) setOnlyEntry(logging.id, logging.key, value);
+    else addEntry(logging.id, logging.key, value);
+  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -80,10 +103,15 @@ export function HabitsScreen({ theme }: { theme: Theme }) {
         periodKey={logging?.key ?? null}
         theme={theme}
         onClose={() => setLogging(null)}
-        onAdd={(value) => logging && addEntry(logging.id, logging.key, value)}
-        onSet={(value) => logging && setOnlyEntry(logging.id, logging.key, value)}
+        onAdd={(value) => logEntry(value, false)}
+        onSet={(value) => logEntry(value, true)}
         onRemove={(index) => logging && removeEntry(logging.id, logging.key, index)}
         onClear={() => logging && clearPeriod(logging.id, logging.key)}
+        onToggleFreeze={() => {
+          if (!logging) return;
+          tapHaptic();
+          toggleFreeze(logging.id, logging.key);
+        }}
       />
     </View>
   );

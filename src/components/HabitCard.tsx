@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { periodKey, periodNoun } from '../dates';
 import { bestStreak, currentStreak, periodEntries, periodStrength, totalEntries } from '../stats';
@@ -31,8 +32,9 @@ export function HabitCard({ habit, theme, onEdit, onLog }: Props) {
         : count === 1 && habit.kind === 'value'
           ? String(nowEntries[0])
           : null;
-  const streak = currentStreak(habit);
-  const best = bestStreak(habit);
+  // Streaks walk the whole history, so only recompute them when the habit changes.
+  const streak = useMemo(() => currentStreak(habit), [habit]);
+  const best = useMemo(() => bestStreak(habit), [habit]);
   const noun = periodNoun(habit.frequency);
 
   return (
@@ -47,6 +49,7 @@ export function HabitCard({ habit, theme, onEdit, onLog }: Props) {
             {FREQ_LABEL[habit.frequency]}
             {habit.target >= 1 ? ` · goal ${habit.target}×/${noun}` : ''}
             {habit.kind === 'value' ? ` · 0–${habit.maxValue}${habit.unit ? ` ${habit.unit}` : ''}` : ''}
+            {habit.reminder ? `  ·  ⏰ ${habit.reminder}` : ''}
             {'  ·  '}🔥 {streak} {noun}
             {streak === 1 ? '' : 's'}
             {'  ·  '}best {best}

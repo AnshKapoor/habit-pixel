@@ -6,9 +6,12 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-
 import { StartupSplash } from './src/components/StartupSplash';
 import { AccountScreen } from './src/screens/AccountScreen';
 import { HabitsScreen } from './src/screens/HabitsScreen';
+import { configureNotifications, useReminderSync } from './src/reminders';
 import { SummaryScreen } from './src/screens/SummaryScreen';
 import { StoreProvider, useStore } from './src/store';
 import { useTheme, type Theme } from './src/theme';
+
+configureNotifications();
 
 type Tab = 'habits' | 'summary' | 'account';
 
@@ -31,7 +34,8 @@ export default function App() {
 function Root() {
   const theme = useTheme();
   const [tab, setTab] = useState<Tab>('habits');
-  const { loaded } = useStore();
+  const { loaded, habits } = useStore();
+  useReminderSync(habits, loaded);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.bg }]} edges={['top', 'left', 'right']}>

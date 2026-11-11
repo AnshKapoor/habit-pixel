@@ -10,6 +10,9 @@ export interface Theme {
   empty: string;
   accent: string;
   danger: string;
+  /** Streak freezes: icon/border colour and a light tile fill. */
+  freeze: string;
+  freezeBg: string;
 }
 
 const light: Theme = {
@@ -22,6 +25,8 @@ const light: Theme = {
   empty: '#ebedf0',
   accent: '#2da44e',
   danger: '#cf222e',
+  freeze: '#0969da',
+  freezeBg: '#ddf4ff',
 };
 
 const dark: Theme = {
@@ -34,6 +39,8 @@ const dark: Theme = {
   empty: '#21262d',
   accent: '#3fb950',
   danger: '#f85149',
+  freeze: '#58a6ff',
+  freezeBg: '#122d4a',
 };
 
 export function useTheme(): Theme {

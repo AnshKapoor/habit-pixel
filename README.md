@@ -16,6 +16,9 @@
 - **Your style.** Square, circle or star tiles, 8 colours, an emoji icon and an optional unit.
 - **Entry list per period.** The round button on each card (today, this week or this month) and every tile in the grid open that period's numbered entries, where you add or remove single entries, or set it back to 0.
 - **Streaks.** Current and best streak of periods that reached the target, plus total entries, for every habit.
+- **Rest days and streak freezes.** Mark planned rest days for a daily habit (e.g. Sat, Sun), or use one of 2 streak freezes a month (a year for monthly habits) on a missed period. Either one keeps your streak alive without adding to it, and Summary leaves those periods out. Rest days show as outlined tiles, freezes in ice blue.
+- **Smart reminders (Android).** A notification per habit at the time you choose, skipped once the habit is done (and on rest days or frozen periods). Weekly and monthly habits get one at the start of the period, then daily nudges when the target is at risk, e.g. *"2 more to hit 3 this week · 2 days left"*.
+- **Haptic feedback.** A light tap when you log an entry, and a stronger one when it reaches the target.
 - **Summary page.** Targets hit and efficiency per habit and overall, over 30 days, 90 days, 12 months or all time, plus this period's progress, habits at target today and active streaks.
 - **Backups.** Export everything as an Excel file (opens in Excel and Google Sheets) or JSON, and import it on any device, merging with or replacing what's there. Import straight from a Google Sheets link. Optional cloud backup with an email login (Supabase).
 - **Light and dark mode**, following your system setting. Works offline; data stays on the device unless you back it up.
@@ -37,6 +40,7 @@ Habits are judged per **period**: a day, week or month, depending on the habit.
 - **Targets hit** = periods with at least *target* entries ÷ periods counted. Habits without a target (0) are left out of it; for them a period is done once anything is logged.
 - **Efficiency** also gives credit for partial progress. Each period scores `min(entries ÷ target, 1)`, multiplied for intensity habits by the average `value ÷ max` of its entries. Periods with nothing logged score **0**; efficiency is the average score.
 - Counting starts when the habit was created, or at its earliest logged entry if you backfilled.
+- Rest days and frozen periods that missed the target aren't counted at all, so they don't lower your score. If you log on one anyway, it counts like any other period.
 - The current day, week or month only counts once its target is reached, so an unfinished week doesn't lower your score.
 - **Overall** numbers are averages across habits, so every habit counts equally whatever its frequency.
 
@@ -89,7 +93,7 @@ The files are not code-signed, so Windows SmartScreen shows a warning the first 
 In the **Account** tab, under **Backup file**:
 
 - **Export → Excel (.xlsx)** saves every habit with its settings and full history as a spreadsheet you can open in Excel, LibreOffice or Google Sheets (upload it to Drive). It has three tabs:
-  - **Habits**: one row per habit (ID, Name, Icon, Colour, How often, Kind, Max value, Unit, Shape, Target, Created).
+  - **Habits**: one row per habit (ID, Name, Icon, Colour, How often, Kind, Max value, Unit, Shape, Target, Created, Rest days, Reminder, Freezes).
   - **Entries**: one row per logged entry (Habit ID, Habit, Period start, Entry #, Value).
   - **How to edit**: notes for editing by hand.
 - **Export → JSON** saves the same data as an exact backup file.
@@ -134,9 +138,9 @@ These are ideas for future versions, not commitments. They're grouped into rough
 
 ### Sprint 1: Daily-use basics (v1.3)
 
-- [ ] **Smart reminders.** A notification per habit at a chosen time (`expo-notifications`). It is skipped when the habit is already logged for the period, and a nudge is sent when a target is at risk (e.g. *"1 more run to hit 3 this week"*).
-- [ ] **Haptic feedback.** A light tap when you log an entry and a stronger one when you hit a target or extend a streak (`expo-haptics`).
-- [ ] **Streak freezes and rest days.** Planned rest days, or a limited number of freezes, keep a streak alive, so one missed day doesn't wipe out months of progress.
+- [x] **Smart reminders.** A notification per habit at a chosen time (`expo-notifications`). It is skipped when the habit is already logged for the period, and a nudge is sent when a target is at risk (e.g. *"1 more run to hit 3 this week"*).
+- [x] **Haptic feedback.** A light tap when you log an entry and a stronger one when you hit a target or extend a streak (`expo-haptics`).
+- [x] **Streak freezes and rest days.** Planned rest days, or a limited number of freezes, keep a streak alive, so one missed day doesn't wipe out months of progress.
 
 ### Sprint 2: Navigation and deep links (v1.4)
 
@@ -179,13 +183,15 @@ These are ideas for future versions, not commitments. They're grouped into rough
 | `src/dates.ts` | Period keys: day, Monday of the week, 1st of the month |
 | `src/stats.ts` | Intensity, streaks, totals |
 | `src/summary.ts` | Efficiency calculation |
+| `src/reminders.ts` | Plans and schedules reminder notifications |
+| `src/haptics.ts` | Haptic feedback when logging |
 | `src/backup.ts` | Export/import (JSON and Excel), validation, merge |
 | `src/spreadsheet.ts` | Excel workbook layout, spreadsheet import, Google Sheets links |
 | `src/cloud.ts` | Supabase client, login session, cloud save/restore |
 | `supabase/schema.sql` | Database table and access rules for cloud backups |
 | `desktop/` | Electron shell (`app/main.js`), build script and installer config |
 
-**Tech:** Expo SDK 58 · React Native 0.88 · TypeScript · react-native-web · Electron · Supabase · SheetJS · AsyncStorage
+**Tech:** Expo SDK 58 · React Native 0.88 · TypeScript · react-native-web · Electron · Supabase · SheetJS · AsyncStorage · expo-notifications · expo-haptics
 
 ## License
 

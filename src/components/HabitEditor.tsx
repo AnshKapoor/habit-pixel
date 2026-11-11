@@ -1,7 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { periodNoun } from '../dates';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { periodNoun, WEEKDAYS } from '../dates';
+import { ensureNotificationPermission, remindersSupported } from '../reminders';
+import { TIME_RE } from '../stats';
 import { HABIT_COLORS, type Theme } from '../theme';
 import type { Frequency, Habit, HabitDraft, HabitKind, TileShape } from '../types';
 import { IconPicker } from './IconPicker';
@@ -19,7 +21,20 @@ const EMPTY: HabitDraft = {
   unit: '',
   shape: 'square',
   target: 0,
+  restDays: [],
+  reminder: null,
 };
+
+const DEFAULT_REMINDER = '20:00';
+const REMINDER_STEP = 15; // minutes
+
+/** Move an "HH:MM" time by `minutes`, wrapping around midnight and snapping to the step. */
+function shiftTime(time: string, minutes: number): string {
+  const [h, m] = time.split(':').map(Number);
+  const snapped = Math.round((h * 60 + m) / REMINDER_STEP) * REMINDER_STEP;
+  const t = (((snapped + minutes) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+}
 
 const MAX_TARGET = 99;
 
@@ -37,6 +52,8 @@ export function HabitEditor({ visible, habit, theme, onSave, onDelete, onClose }
   const [draft, setDraft] = useState<HabitDraft>(EMPTY);
   const [maxText, setMaxText] = useState('10');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [timeText, setTimeText] = useState(DEFAULT_REMINDER);
+  const [permissionDenied, setPermissionDenied] = useState(false);
 
   // Reset the form each time the sheet opens (adjusting state during render, not in an effect).
   const [openedFor, setOpenedFor] = useState<{ visible: boolean; habit: Habit | null }>({ visible: false, habit: null });
@@ -47,6 +64,8 @@ export function HabitEditor({ visible, habit, theme, onSave, onDelete, onClose }
       setDraft(d);
       setMaxText(String(d.maxValue));
       setConfirmDelete(false);
+      setTimeText(d.reminder ?? DEFAULT_REMINDER);
+      setPermissionDenied(false);
     }
   }
 
@@ -57,6 +76,20 @@ export function HabitEditor({ visible, habit, theme, onSave, onDelete, onClose }
   const canSave = draft.name.trim().length > 0 && maxValid;
   const hasHistory = habit && Object.keys(habit.entries).length > 0;
 
+  const setReminder = (time: string | null) => {
+    set('reminder', time);
+    if (time) setTimeText(time);
+  };
+
+  const toggleReminder = async (on: boolean) => {
+    if (!on) return setReminder(null);
+    setReminder(draft.reminder ?? timeText);
+    if (remindersSupported) setPermissionDenied(!(await ensureNotificationPermission()));
+  };
+
+  const toggleRestDay = (d: number) =>
+    set('restDays', draft.restDays.includes(d) ? draft.restDays.filter((x) => x !== d) : [...draft.restDays, d].sort());
+
   const save = () => {
     if (!canSave) return;
     onSave({
@@ -64,6 +97,7 @@ export function HabitEditor({ visible, habit, theme, onSave, onDelete, onClose }
       name: draft.name.trim(),
       unit: draft.kind === 'value' ? draft.unit.trim() : '',
       maxValue: draft.kind === 'value' ? maxValue : 1,
+      restDays: draft.frequency === 'daily' ? draft.restDays : [],
     });
   };
 
@@ -150,6 +184,92 @@ export function HabitEditor({ visible, habit, theme, onSave, onDelete, onClose }
           {draft.target === 0
             ? `Optional. With no target, any entry marks the ${periodNoun(draft.frequency)} as done. Set 1 or more to track a goal like “3 times a week” in Summary.`
             : `Log each time you do it. A ${periodNoun(draft.frequency)} counts as reached once it has ${draft.target} ${draft.target === 1 ? 'entry' : 'entries'}.`}
+        </Text>
+
+        {draft.frequency === 'daily' && (
+          <>
+            {label('Rest days (optional)')}
+            <View style={styles.wrapRow}>
+              {WEEKDAYS.map((w, d) => {
+                const on = draft.restDays.includes(d);
+                return (
+                  <Pressable
+                    key={w}
+                    onPress={() => toggleRestDay(d)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: on }}
+                    accessibilityLabel={`Rest day ${w}`}
+                    style={[
+                      styles.dayChip,
+                      { borderColor: on ? draft.color : theme.border, backgroundColor: on ? draft.color : 'transparent' },
+                    ]}
+                  >
+                    <Text style={{ color: on ? '#fff' : theme.text, fontWeight: '600', fontSize: 13 }}>{w}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={[styles.small, { color: theme.subtext, marginTop: 6 }]}>
+              Missing a rest day doesn’t break your streak or lower your Summary score. Logging on one still counts.
+            </Text>
+          </>
+        )}
+
+        {label('Reminder (optional)')}
+        <View style={styles.targetRow}>
+          <Switch
+            value={draft.reminder !== null}
+            onValueChange={toggleReminder}
+            trackColor={{ true: draft.color, false: theme.border }}
+            thumbColor="#fff"
+            accessibilityLabel="Reminder"
+          />
+          {draft.reminder !== null ? (
+            <View style={[styles.stepper, { borderColor: theme.border }]}>
+              <Pressable
+                onPress={() => setReminder(shiftTime(draft.reminder ?? timeText, -REMINDER_STEP))}
+                hitSlop={6}
+                accessibilityLabel="Earlier"
+                style={styles.stepBtn}
+              >
+                <Ionicons name="remove" size={20} color={theme.text} />
+              </Pressable>
+              <TextInput
+                value={timeText}
+                onChangeText={(t) => {
+                  setTimeText(t);
+                  const m = t.trim().match(/^(\d{1,2})[:.](\d{2})$/);
+                  const time = m ? `${m[1].padStart(2, '0')}:${m[2]}` : '';
+                  if (TIME_RE.test(time)) set('reminder', time);
+                }}
+                onBlur={() => setTimeText(draft.reminder ?? DEFAULT_REMINDER)}
+                keyboardType="numbers-and-punctuation"
+                selectTextOnFocus
+                maxLength={5}
+                accessibilityLabel="Reminder time"
+                style={[styles.stepValue, { width: 64, color: theme.text }]}
+              />
+              <Pressable
+                onPress={() => setReminder(shiftTime(draft.reminder ?? timeText, REMINDER_STEP))}
+                hitSlop={6}
+                accessibilityLabel="Later"
+                style={styles.stepBtn}
+              >
+                <Ionicons name="add" size={20} color={theme.text} />
+              </Pressable>
+            </View>
+          ) : (
+            <Text style={{ color: theme.subtext, fontSize: 15 }}>Off</Text>
+          )}
+        </View>
+        <Text style={[styles.small, { color: permissionDenied ? theme.danger : theme.subtext, marginTop: 6 }]}>
+          {permissionDenied
+            ? 'Notifications are turned off for Habit Pixel. Allow them in your phone’s settings to get reminders.'
+            : !remindersSupported
+              ? 'Reminders ring on the Android app. Set one here and it carries over with your backup.'
+              : draft.frequency === 'daily'
+                ? 'A notification at this time each day, skipped once it’s done (and on rest days).'
+                : `A notification at the start of each ${periodNoun(draft.frequency)}, then daily nudges when the target is at risk. Skipped once the target is reached.`}
         </Text>
 
         {label('What do you track?')}
@@ -256,6 +376,7 @@ const styles = StyleSheet.create({
   stepper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10 },
   stepBtn: { paddingHorizontal: 10, paddingVertical: 8 },
   stepValue: { width: 40, textAlign: 'center', fontSize: 16, fontWeight: '700', paddingVertical: 6 },
+  dayChip: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 11, paddingVertical: 6 },
   swatch: { width: 32, height: 32, borderRadius: 16, borderWidth: 3 },
   primary: { marginTop: 24, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   primaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },

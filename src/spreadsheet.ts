@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { fromKey, periodStart, toKey } from './dates';
+import { fromKey, periodStart, toKey, WEEKDAYS } from './dates';
 import type { Frequency, Habit, HabitKind, TileShape } from './types';
 
 /**
@@ -14,7 +14,7 @@ export const HABITS_SHEET = 'Habits';
 export const ENTRIES_SHEET = 'Entries';
 const HELP_SHEET = 'How to edit';
 
-const HABIT_HEADERS = ['ID', 'Name', 'Icon', 'Colour', 'How often', 'Kind', 'Max value', 'Unit', 'Shape', 'Target', 'Created'];
+const HABIT_HEADERS = ['ID', 'Name', 'Icon', 'Colour', 'How often', 'Kind', 'Max value', 'Unit', 'Shape', 'Target', 'Created', 'Rest days', 'Reminder', 'Freezes'];
 const ENTRY_HEADERS = ['Habit ID', 'Habit', 'Period start', 'Entry #', 'Value'];
 
 const FREQ_LABEL: Record<Frequency, string> = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly' };
@@ -30,6 +30,9 @@ const HELP_ROWS = [
   ['Target', 'Entries per day/week/month that count as reaching the goal; 0 or empty = no target'],
   ['Shape', 'Square, Circle or Star'],
   ['Colour', 'A hex colour such as #2DA44E (optional)'],
+  ['Rest days', 'Daily habits only: planned rest days such as “Sat, Sun” (optional)'],
+  ['Reminder', 'Reminder time as HH:MM, e.g. 20:30 (optional)'],
+  ['Freezes', 'Period start dates covered by a streak freeze, e.g. “2026-11-03, 2026-11-10” (optional)'],
   [],
   ['Entries tab', 'One row per time you did a habit. Add rows to backfill history; delete rows to remove entries.'],
   ['Habit ID / Habit', 'Which habit the entry belongs to. The ID is used first, then the name.'],
@@ -53,6 +56,9 @@ export function habitsToXlsx(habits: Habit[]): Uint8Array {
     SHAPE_LABEL[h.shape],
     h.target,
     h.createdAt,
+    h.restDays.map((d) => WEEKDAYS[d]).join(', '),
+    h.reminder ?? '',
+    h.freezes.join(', '),
   ]);
 
   const entryRows: (string | number)[][] = [];
@@ -64,7 +70,7 @@ export function habitsToXlsx(habits: Habit[]): Uint8Array {
 
   const wb = XLSX.utils.book_new();
   const habitsSheet = XLSX.utils.aoa_to_sheet([HABIT_HEADERS, ...habitRows]);
-  habitsSheet['!cols'] = [14, 22, 6, 10, 10, 16, 10, 10, 8, 8, 12].map((wch) => ({ wch }));
+  habitsSheet['!cols'] = [14, 22, 6, 10, 10, 16, 10, 10, 8, 8, 12, 14, 9, 24].map((wch) => ({ wch }));
   const entriesSheet = XLSX.utils.aoa_to_sheet([ENTRY_HEADERS, ...entryRows]);
   entriesSheet['!cols'] = [14, 22, 12, 8, 8].map((wch) => ({ wch }));
   const helpSheet = XLSX.utils.aoa_to_sheet(HELP_ROWS);
@@ -165,6 +171,34 @@ function parseShape(v: unknown): TileShape {
   return s === 'circle' || s === 'star' ? s : 'square';
 }
 
+/** "Sat, Sun" or "Saturday Sunday" → [5, 6]. */
+function parseWeekdays(v: unknown): number[] {
+  return str(v)
+    .split(/[\s,;]+/)
+    .map((w) => WEEKDAYS.findIndex((d) => norm(w).slice(0, 3) === norm(d)))
+    .filter((i) => i >= 0);
+}
+
+/** "20:30", "8:05" or a spreadsheet time (fraction of a day) → "HH:MM". */
+function parseTime(v: unknown): string | null {
+  if (typeof v === 'number' && v >= 0 && v < 1) {
+    const mins = Math.round(v * 1440) % 1440;
+    return `${pad(Math.floor(mins / 60))}:${pad(mins % 60)}`;
+  }
+  const m = str(v).match(/^(\d{1,2})[:.](\d{2})/);
+  return m && +m[1] < 24 && +m[2] < 60 ? `${pad(+m[1])}:${m[2]}` : null;
+}
+
+/** A list of dates, each filed under the start of its period. */
+function parseDateList(v: unknown, frequency: Frequency | null): string[] {
+  if (!frequency) return [];
+  const parts = typeof v === 'number' ? [v] : str(v).split(/[\s,;]+/);
+  return parts
+    .map(toDateKey)
+    .filter((k): k is string => k !== null)
+    .map((k) => toKey(periodStart(fromKey(k), frequency)));
+}
+
 function slug(name: string): string {
   return (
     'sheet-' +
@@ -220,6 +254,9 @@ export function xlsxToHabits(bytes: Uint8Array): SheetImport {
       shape: parseShape(pick(row, 'Shape')),
       target: Math.max(0, Math.round(num(pick(row, 'Target')) ?? 0)),
       createdAt: created ?? toKey(new Date()),
+      restDays: parseWeekdays(pick(row, 'Rest days', 'Rest')),
+      reminder: parseTime(pick(row, 'Reminder', 'Reminder time')),
+      freezes: parseDateList(pick(row, 'Freezes', 'Frozen'), frequency),
       entries: {} as Record<string, number[]>,
     };
     habits.push(habit);

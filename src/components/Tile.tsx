@@ -13,12 +13,22 @@ interface Props {
   theme: Theme;
   current?: boolean;
   future?: boolean;
+  /** A missed period that keeps the streak: a planned rest day (faded) or a streak freeze (ice blue). */
+  excused?: 'rest' | 'freeze' | null;
   onPress?: () => void;
 }
 
-function TileImpl({ size, shape, color, strength, theme, current, future, onPress }: Props) {
-  const fill = future ? 'transparent' : tileColor(color, strength, theme.empty);
-  const ring = current ? theme.text : future ? theme.empty : 'transparent';
+function TileImpl({ size, shape, color, strength, theme, current, future, excused, onPress }: Props) {
+  const fill = future
+    ? 'transparent'
+    : excused === 'freeze'
+      ? theme.freezeBg
+      : excused === 'rest' && strength <= 0
+        ? 'transparent'
+        : tileColor(color, strength, theme.empty);
+  // Rest days show as an outline; freezes get a border in the freeze colour (and a snowflake when large enough).
+  const outline = excused === 'freeze' ? theme.freeze : excused === 'rest' && strength <= 0 ? theme.empty : null;
+  const ring = current ? theme.text : future ? theme.empty : (outline ?? 'transparent');
 
   const body =
     shape === 'star' ? (
@@ -34,9 +44,9 @@ function TileImpl({ size, shape, color, strength, theme, current, future, onPres
         }}
       >
         <Ionicons
-          name={future ? 'star-outline' : 'star'}
+          name={future || excused === 'rest' ? 'star-outline' : excused === 'freeze' ? 'snow' : 'star'}
           size={current ? size - 3 : size + 1}
-          color={future ? theme.empty : fill}
+          color={future ? theme.empty : excused === 'freeze' ? theme.freeze : excused === 'rest' ? theme.empty : fill}
         />
       </View>
     ) : (
@@ -46,10 +56,14 @@ function TileImpl({ size, shape, color, strength, theme, current, future, onPres
           height: size,
           backgroundColor: fill,
           borderRadius: shape === 'circle' ? size / 2 : Math.max(2, size / 5),
-          borderWidth: current || future ? 1 : 0,
+          borderWidth: current || future || outline ? 1 : 0,
           borderColor: ring,
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
-      />
+      >
+        {excused === 'freeze' && size >= 16 ? <Ionicons name="snow" size={size - 6} color={theme.freeze} /> : null}
+      </View>
     );
 
   if (!onPress || future) return body;

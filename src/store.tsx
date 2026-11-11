@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { toKey } from './dates';
-import { normalizeHabit } from './stats';
+import { fromKey, toKey, weekdayIndex } from './dates';
+import { canFreeze, isFrozen, normalizeHabit } from './stats';
 import type { Habit, HabitDraft } from './types';
 
 const STORAGE_KEY = 'habit-pixel/habits/v1';
@@ -20,6 +20,8 @@ interface Store {
   removeEntry: (id: string, key: string, index: number) => void;
   /** Remove every entry in that period (back to 0 / not done). */
   clearPeriod: (id: string, key: string) => void;
+  /** Use a streak freeze on that period, or give it back if it already has one. */
+  toggleFreeze: (id: string, key: string) => void;
   /** Replace everything, e.g. when restoring a cloud backup. */
   replaceHabits: (habits: Habit[]) => void;
 }
@@ -52,7 +54,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [habits, loaded]);
 
   const addHabit = useCallback((draft: HabitDraft) => {
-    setHabits((hs) => [...hs, { ...draft, id: newId(), createdAt: toKey(new Date()), entries: {} }]);
+    setHabits((hs) => [...hs, { ...draft, id: newId(), createdAt: toKey(new Date()), entries: {}, freezes: [] }]);
   }, []);
 
   const updateHabit = useCallback((id: string, draft: HabitDraft) => {
@@ -60,8 +62,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       hs.map((h) => {
         if (h.id !== id) return h;
         let entries = h.entries;
-        // Switching frequency invalidates period keys; keep entries only if it didn't change.
-        if (draft.frequency !== h.frequency) entries = {};
+        let freezes = h.freezes;
+        // Switching frequency invalidates period keys; keep entries and freezes only if it didn't change.
+        if (draft.frequency !== h.frequency) {
+          entries = {};
+          freezes = [];
+        }
         // Clamp values when the scale shrinks or the habit becomes yes/no.
         else if (draft.kind === 'boolean' || draft.maxValue < h.maxValue) {
           entries = Object.fromEntries(
@@ -71,7 +77,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ]),
           );
         }
-        return { ...h, ...draft, entries };
+        const restDays = draft.frequency === 'daily' ? draft.restDays : [];
+        // A rest day can't also use a freeze.
+        if (restDays.length) freezes = freezes.filter((k) => !restDays.includes(weekdayIndex(fromKey(k))));
+        return { ...h, ...draft, restDays, entries, freezes };
       }),
     );
   }, []);
@@ -111,6 +120,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
   const clearPeriod = useCallback((id: string, key: string) => changeEntries(id, key, () => []), [changeEntries]);
 
+  const toggleFreeze = useCallback((id: string, key: string) => {
+    setHabits((hs) =>
+      hs.map((h) => {
+        if (h.id !== id) return h;
+        if (isFrozen(h, key)) return { ...h, freezes: h.freezes.filter((k) => k !== key) };
+        return canFreeze(h, key) ? { ...h, freezes: [...h.freezes, key].sort() } : h;
+      }),
+    );
+  }, []);
+
   const value = useMemo(
     () => ({
       loaded,
@@ -122,9 +141,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setOnlyEntry,
       removeEntry,
       clearPeriod,
+      toggleFreeze,
       replaceHabits: setHabits,
     }),
-    [loaded, habits, addHabit, updateHabit, deleteHabit, addEntry, setOnlyEntry, removeEntry, clearPeriod],
+    [loaded, habits, addHabit, updateHabit, deleteHabit, addEntry, setOnlyEntry, removeEntry, clearPeriod, toggleFreeze],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

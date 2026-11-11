@@ -1,5 +1,5 @@
-import { addDays, addMonths, fromKey, periodStart, previousPeriod, startOfDay, toKey } from './dates';
-import { hasTarget, periodEntries, periodStrength, targetMet } from './stats';
+import { addDays, addMonths, periodStart, previousPeriod, startOfDay, toKey } from './dates';
+import { excusal, firstPeriod, hasTarget, periodEntries, periodStrength, targetMet } from './stats';
 import type { Habit } from './types';
 
 export type SummaryRange = '30d' | '90d' | '12m' | 'all';
@@ -14,7 +14,10 @@ export function rangeStart(range: SummaryRange, today = new Date()): Date | null
 
 export interface HabitSummary {
   habit: Habit;
-  /** Periods counted (the current period counts only once its target is reached, or once logged without one). */
+  /**
+   * Periods counted (the current period counts only once its target is reached, or once logged without one).
+   * Missed rest days and frozen periods aren't counted.
+   */
   periods: number;
   /** Periods that reached the target number of entries. */
   targetHit: number;
@@ -29,16 +32,6 @@ export interface HabitSummary {
   efficiency: number | null;
   /** Value habits only: average value per entry. */
   averageValue: number | null;
-}
-
-/** The first period the habit can be judged on: its creation, or an earlier back-filled entry. */
-function firstPeriod(habit: Habit): Date {
-  let first = fromKey(habit.createdAt);
-  for (const k of Object.keys(habit.entries)) {
-    const d = fromKey(k);
-    if (d < first) first = d;
-  }
-  return periodStart(first, habit.frequency);
 }
 
 export function summarizeHabit(habit: Habit, from: Date | null, today = new Date()): HabitSummary {
@@ -60,6 +53,8 @@ export function summarizeHabit(habit: Habit, from: Date | null, today = new Date
     const met = targetMet(habit, key);
     // The current day/week/month isn't over yet, so it only counts once its target is reached.
     if (d.getTime() === current.getTime() && !met) continue;
+    // Rest days and frozen periods that missed the target are left out, so they don't lower the score.
+    if (excusal(habit, key)) continue;
     periods++;
     if (met) targetHit++;
     const values = periodEntries(habit, key);

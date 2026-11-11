@@ -56,6 +56,17 @@ export function previousPeriod(start: Date, freq: Frequency): Date {
   return addDays(start, -1);
 }
 
+export function nextPeriod(start: Date, freq: Frequency): Date {
+  if (freq === 'weekly') return addDays(start, 7);
+  if (freq === 'monthly') return addMonths(start, 1);
+  return addDays(start, 1);
+}
+
+/** 0 = Monday … 6 = Sunday. */
+export function weekdayIndex(d: Date): number {
+  return (d.getDay() + 6) % 7;
+}
+
 export function formatPeriod(key: string, freq: Frequency): string {
   const d = fromKey(key);
   if (freq === 'monthly') return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
